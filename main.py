@@ -225,44 +225,76 @@ class ReagentCalculatorApp:
         else:
             messagebox.showerror("Ошибка", "Не удалось найти рецепт.")
 
-    def resolve_reactants(self, recipe_id, amount_needed, depth=0, target_product=None):
-        """Рекурсивно решает, какие реагенты нужны для производства нужного продукта."""
+    def resolve_reactants(self, recipe_id, amount_needed, depth=0, target_product=None, include_header=True,
+                          visited=None):
+        """Рекурсивно определяет состав реагентов, компактно и с пометками для вложенных рецептов."""
+
+        def format_amount(value):
+            """Форматирует количество: удаляет лишние нули, если они не нужны."""
+            return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
+
+        if visited is None:
+            visited = set()
 
         recipe = self.recipe_dict.get(recipe_id)
         if not recipe:
-            return f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден.\n"
+            return f"{' ' * (depth * 2)}Ошибка: Рецепт {recipe_id} не найден.\n"
 
         products = recipe.get("products", {})
         reactants = recipe.get("reactants", {})
 
-        # Определяем нужный продукт: либо явно передан, либо по умолчанию берём первый
         if target_product is None:
-            # В данном случае выбор продукта, который совпадает с `product_name` (например AmbuzolPlus)
             target_product = max(products, key=products.get, default=None)
 
         if not target_product or target_product not in products:
-            return f"{'  ' * depth}Ошибка: Продукт {target_product} не найден в рецепте {recipe_id}.\n"
+            return f"{' ' * (depth * 2)}Ошибка: Продукт {target_product} не найден в рецепте {recipe_id}.\n"
 
         product_amount = products[target_product]
         multiplier = amount_needed / product_amount
 
         translated_product = self.translations.get(target_product, target_product)
-        result_str = f"{'  ' * depth}{amount_needed:.2f} {translated_product} (Рецепт {recipe_id}):\n"
+        has_reactants = bool(reactants)
 
-        # Обрабатываем каждый реагент
+        result_str = ""
+
+        # Добавляем заголовок продукта, если требуется
+        if include_header:
+            suffix = " [р]" if has_reactants else ""
+            header_line = f"{' ' * (depth * 2)}{format_amount(amount_needed)} {translated_product}{suffix}"
+            if "minTemp" in recipe:
+                header_line += f" (мин. температура: {recipe['minTemp']}K)"
+            header_line += ":\n" if has_reactants else "\n"
+            result_str += header_line
+
+        # Обработка реагентов
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
             final_amount = required_amount if is_catalyst else required_amount * multiplier
 
-            # Переводим имя реагента
-            translated_reactant_name = self.translations.get(reactant, reactant)
-            result_str += f"{'  ' * (depth + 1)}{translated_reactant_name}: {final_amount:.2f}" + (
-                " (катализатор)" if is_catalyst else "") + "\n"
+            translated_name = self.translations.get(reactant, reactant)
+            catalyst_note = " (катализатор)" if is_catalyst else ""
+            is_nested = reactant in self.recipe_dict and not is_catalyst
+            suffix = " [р]" if is_nested else ""
 
-            # Рекурсивно разбираем составной реагент, если он есть
-            if reactant in self.recipe_dict and not is_catalyst:
-                result_str += self.resolve_reactants(reactant, final_amount, depth + 2, target_product=reactant)
+            # Определяем отступ для текущего реагента
+            line_indent = (depth + 1) * 2 if include_header else depth * 2
+            line = f"{' ' * line_indent}{format_amount(final_amount)} {translated_name}{suffix}{catalyst_note}\n"
+            result_str += line
+
+            # Если реагент вложенный и не посещён, обрабатываем его рецепт
+            if is_nested and reactant not in visited:
+                visited.add(reactant)
+                # Рекурсивно получаем состав реагентов без заголовка
+                reactants_str = self.resolve_reactants(
+                    recipe_id=reactant,
+                    amount_needed=final_amount,
+                    depth=depth + 1,
+                    target_product=reactant,
+                    include_header=False,
+                    visited=visited
+                )
+                result_str += reactants_str
 
         return result_str
 
