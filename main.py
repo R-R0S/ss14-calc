@@ -3,18 +3,26 @@ import os
 import requests
 import threading
 from tkinter import *
-from tkinter import messagebox, font
+from tkinter import messagebox, ttk
+import tkinter as tk
 
 
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Reagent Calculator")
-        self.root.geometry("800x500")
+        self.root.geometry("1000x600")
         self.root.configure(bg="#2e2e2e")
+
+        # Конфигурация категорий
+        self.recipe_categories = {
+            'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
+            'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
+            'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml'
+        }
+
         self.recipes = []
         self.recipe_dict = {}
-
         # Словарь для перевода
         self.translations = {
             "Dylovene": "Диловен",
@@ -108,25 +116,36 @@ class ReagentCalculatorApp:
             "Laughter": "Смех",
             "PotassiumIodide": "Иодид калия",
             "Haloperidol": "Галоперидол",
-            "Aloxadone": "Алоксадон"
-
+            "Aloxadone": "Алоксадон",
         }
 
+        self.setup_directories()
         self.load_recipes()
         self.create_widgets()
 
+    def setup_directories(self):
+        if not os.path.exists('recipes'):
+            os.makedirs('recipes')
+
     def load_recipes(self):
-        try:
-            if os.path.exists("recipes.yml"):
-                with open("recipes.yml", "r", encoding="utf-8") as f:
-                    self.recipes = list(self.filter_recipes(yaml.load(f, Loader=self.custom_yaml_loader)))
-                    self.recipes.sort(key=lambda x: x['id'].lower())
-                    self.recipe_dict = {recipe['id']: recipe for recipe in self.recipes if 'id' in recipe}
-        except Exception as e:
-            print(f"Ошибка при загрузке рецептов: {e}")
-            messagebox.showerror("Ошибка", "Не удалось загрузить рецепты.")
-            self.recipes = []
-            self.recipe_dict = {}
+        self.recipes = []
+        self.recipe_dict = {}
+
+        for filename in os.listdir('recipes'):
+            if filename.endswith('.yml'):
+                try:
+                    with open(os.path.join('recipes', filename), 'r', encoding='utf-8') as f:
+                        recipes = yaml.load(f, Loader=self.custom_yaml_loader)
+                        if recipes:
+                            category = filename.replace('.yml', '')
+                            for recipe in self.filter_recipes(recipes):
+                                recipe['category'] = category
+                                self.recipes.append(recipe)
+                except Exception as e:
+                    print(f"Ошибка загрузки {filename}: {e}")
+
+        self.recipe_dict = {recipe['id']: recipe for recipe in self.recipes}
+        self.recipes.sort(key=lambda x: x['id'].lower())
 
     def filter_recipes(self, raw_data):
         for entry in raw_data:
@@ -145,93 +164,194 @@ class ReagentCalculatorApp:
         return IgnoreUnknownTagsLoader(stream)
 
     def create_widgets(self):
-        left_frame = Frame(self.root, bg="#2e2e2e")
-        left_frame.pack(side=LEFT, padx=20, pady=20, fill=Y)
+        main_frame = tk.Frame(self.root, bg="#2e2e2e")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        self.recipe_label = Label(left_frame, text="Выберите рецепт", font=("Arial", 14), fg="white", bg="#2e2e2e")
-        self.recipe_label.pack(pady=10)
+        # Левая панель
+        left_panel = tk.Frame(main_frame, bg="#2e2e2e")
+        left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        if self.recipes:
-            self.recipe_var = StringVar(self.root)
-            self.recipe_var.set("Выберите рецепт")
-            translated_recipes = [self.translations.get(recipe['id'], recipe['id']) for recipe in self.recipes]
-            self.recipe_dropdown = OptionMenu(left_frame, self.recipe_var, *translated_recipes)
-            self.recipe_dropdown.config(bg="#4f4f4f", fg="white", font=("Arial", 12))
-            self.recipe_dropdown.pack(pady=10, fill=X)
-        else:
-            self.recipe_dropdown = Label(left_frame, text="Нет доступных рецептов", font=("Arial", 12), fg="white",
-                                         bg="#2e2e2e")
-            self.recipe_dropdown.pack(pady=20)
+        # Выбор категории
+        self.category_var = tk.StringVar()
+        category_frame = tk.Frame(left_panel, bg="#2e2e2e")
+        category_frame.pack(fill=tk.X, pady=5)
 
-        self.amount_label = Label(left_frame, text="Количество продукта (по умолчанию 90)", font=("Arial", 12),
-                                  fg="white", bg="#2e2e2e")
-        self.amount_label.pack(pady=10)
+        tk.Label(category_frame,
+                text="Выберите категорию:",
+                font=("Arial", 12),
+                fg="white",
+                bg="#2e2e2e").pack(anchor=tk.W)
 
-        self.amount_entry = Entry(left_frame, font=("Arial", 12), bg="#4f4f4f", fg="white")
-        self.amount_entry.pack(pady=10)
+        self.category_combobox = ttk.Combobox(
+            category_frame,
+            textvariable=self.category_var,
+            values=list(self.recipe_categories.keys()),
+            state="readonly",
+            font=("Arial", 11))
+        self.category_combobox.pack(fill=tk.X, pady=5)
+        self.category_combobox.bind("<<ComboboxSelected>>", self.update_recipes_list)
 
-        self.calculate_button = Button(left_frame, text="Рассчитать", command=self.calculate_reactants, bg="#1e7e34",
-                                       fg="white", font=("Arial", 12))
-        self.calculate_button.pack(pady=10)
+        # Выбор рецепта
+        self.recipe_var = tk.StringVar()
+        recipe_frame = tk.Frame(left_panel, bg="#2e2e2e")
+        recipe_frame.pack(fill=tk.X, pady=5)
 
-        self.update_button = Button(left_frame, text="Обновить рецепты", command=self.update_data_async, bg="#0067a1",
-                                    fg="white", font=("Arial", 12))
-        self.update_button.pack(pady=10)
+        tk.Label(recipe_frame,
+                text="Выберите рецепт:",
+                font=("Arial", 12),
+                fg="white",
+                bg="#2e2e2e").pack(anchor=tk.W)
 
-        right_frame = Frame(self.root, bg="#2e2e2e")
-        right_frame.pack(side=RIGHT, padx=20, pady=20, fill=BOTH, expand=True)
+        self.recipe_combobox = ttk.Combobox(
+            recipe_frame,
+            textvariable=self.recipe_var,
+            state="readonly",
+            font=("Arial", 11))
+        self.recipe_combobox.pack(fill=tk.X, pady=5)
 
-        self.result_label = Label(right_frame, text="Результаты:", font=("Arial", 14), fg="white", bg="#2e2e2e")
-        self.result_label.pack(pady=10)
+        # Ввод количества
+        amount_frame = tk.Frame(left_panel, bg="#2e2e2e")
+        amount_frame.pack(fill=tk.X, pady=5)
 
-        self.result_text = Text(right_frame, height=20, width=50, wrap=WORD,
-                                font=("Courier", 12), bg="#3c3c3c", fg="white",
-                                padx=10, pady=10)
-        self.result_text.pack(pady=10, fill=BOTH, expand=True)
+        tk.Label(amount_frame,
+                 text="Количество продукта:",
+                 font=("Arial", 12),
+                 fg="white",
+                 bg="#2e2e2e").pack(anchor=tk.W)
+
+        self.amount_entry = tk.Entry(
+            amount_frame,
+            font=("Arial", 12),
+            bg="#4f4f4f",
+            fg="white"
+        )
+        self.amount_entry.pack(fill=tk.X, pady=5)
+        self.amount_entry.insert(0, "90")
+
+        # Кнопки
+        button_frame = tk.Frame(left_panel, bg="#2e2e2e")
+        button_frame.pack(fill=tk.X, pady=10)
+
+        self.calculate_btn = tk.Button(
+            button_frame,
+            text="Рассчитать",
+            command=self.calculate_reactants,
+            bg="#1e7e34",
+            fg="white",
+            font=("Arial", 12)
+        )
+        self.calculate_btn.pack(side=tk.LEFT, padx=5)
+
+        self.update_btn = tk.Button(
+            button_frame,
+            text="Обновить данные",
+            command=self.update_data_async,
+            bg="#0067a1",
+            fg="white",
+            font=("Arial", 12)
+        )
+        self.update_btn.pack(side=tk.RIGHT, padx=5)
+
+        # Правая панель с результатами
+        right_panel = tk.Frame(main_frame, bg="#2e2e2e")
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10)
+
+        self.result_text = tk.Text(
+            right_panel,
+            wrap=tk.WORD,
+            font=("Courier New", 11),
+            bg="#3c3c3c",
+            fg="white",
+            padx=15,
+            pady=15
+        )
+        self.result_text.pack(fill=tk.BOTH, expand=True)
 
         # Настройка цветов для уровней
         self.depth_colors = [
-            "#FFFFFF",  # Уровень 0: белый
-            "#4EC9B0",  # Уровень 1: бирюзовый
-            "#569CD6",  # Уровень 2: голубой
-            "#B5CEA8",  # Уровень 3: зеленый
-            "#CE9178",  # Уровень 4: оранжевый
-            "#C586C0"  # Уровень 5: фиолетовый
+            "#FFFFFF", "#4EC9B0", "#569CD6",
+            "#B5CEA8", "#CE9178", "#C586C0"
         ]
         for i, color in enumerate(self.depth_colors):
             self.result_text.tag_config(f"depth{i}", foreground=color)
 
-    def calculate_reactants(self):
-        selected_recipe_translated = self.recipe_var.get()
-        if selected_recipe_translated == "Выберите рецепт":
-            messagebox.showwarning("Предупреждение", "Пожалуйста, выберите рецепт.")
+    def update_recipes_list(self, event=None):
+        selected_category = self.category_var.get()
+        if not selected_category:
             return
 
-        selected_recipe = None
-        for recipe in self.recipes:
-            translated_name = self.translations.get(recipe['id'], recipe['id'])
-            if translated_name == selected_recipe_translated:
-                selected_recipe = recipe
-                break
+        # Фильтруем рецепты по выбранной категории
+        filtered_recipes = [r for r in self.recipes if r['category'] == selected_category]
 
-        if selected_recipe:
-            product_name = list(selected_recipe.get('products', {}).keys())[0]
-            product_amount_str = self.amount_entry.get()
-            product_amount = 90 if not product_amount_str else int(product_amount_str)
+        # Получаем переведенные названия
+        translated_names = []
+        self.recipe_map = {}
+        for recipe in filtered_recipes:
+            translated = self.translations.get(recipe['id'], recipe['id'])
+            translated_names.append(translated)
+            self.recipe_map[translated] = recipe['id']
 
-            self.result_text.delete(1.0, END)
-            self.resolve_reactants(
-                selected_recipe['id'],
-                product_amount,
-                target_product=selected_recipe['id'],
-                text_widget=self.result_text
-            )
+        # Обновляем список рецептов
+        self.recipe_combobox['values'] = translated_names
+        if translated_names:
+            self.recipe_var.set(translated_names[0])
         else:
-            messagebox.showerror("Ошибка", "Не удалось найти рецепт.")
+            self.recipe_var.set('')
+            messagebox.showinfo("Информация", "В выбранной категории нет рецептов")
+
+    def update_data_async(self):
+        threading.Thread(target=self.update_data).start()
+
+    def update_data(self):
+        try:
+            # Скачиваем все категории
+            for category, url in self.recipe_categories.items():
+                response = requests.get(url)
+                if response.status_code == 200:
+                    with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
+                        f.write(response.text)
+
+            # Перезагружаем рецепты
+            self.load_recipes()
+            self.update_recipes_list()
+            messagebox.showinfo("Обновление", "Данные успешно обновлены!")
+
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при обновлении: {str(e)}")
+
+    def calculate_reactants(self):
+        selected_translation = self.recipe_var.get()
+        if not selected_translation:
+            messagebox.showwarning("Ошибка", "Выберите рецепт")
+            return
+
+        # Получаем оригинальный ID рецепта
+        recipe_id = self.recipe_map.get(selected_translation)
+        if not recipe_id:
+            messagebox.showerror("Ошибка", "Неверный выбор рецепта")
+            return
+
+        if not recipe_id or recipe_id not in self.recipe_dict:
+            messagebox.showerror("Ошибка", "Рецепт не найден")
+            return
+
+        try:
+            amount = float(self.amount_entry.get() or 90)
+        except ValueError:
+            messagebox.showerror("Ошибка", "Некорректное количество")
+            return
+
+        self.result_text.delete(1.0, tk.END)
+        self.resolve_reactants(
+            recipe_id=recipe_id,
+            amount_needed=amount,
+            text_widget=self.result_text
+        )
 
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
                           target_product=None, include_header=True,
                           visited=None, text_widget=None):
+        # Исправленная версия функции
         def format_amount(value):
             return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
@@ -240,88 +360,62 @@ class ReagentCalculatorApp:
 
         current_color_tag = f"depth{min(depth, len(self.depth_colors) - 1)}"
         recipe = self.recipe_dict.get(recipe_id)
+
         if not recipe:
-            text_widget.insert("end",
-                               f"{' ' * (depth * 2)}Ошибка: Рецепт {recipe_id} не найден.\n",
+            text_widget.insert(tk.END,
+                               f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден\n",
                                current_color_tag)
             return
 
         products = recipe.get("products", {})
         reactants = recipe.get("reactants", {})
 
-        if target_product is None:
-            target_product = max(products, key=products.get, default=None)
-
+        target_product = target_product or next(iter(products.keys()), None)
         if not target_product or target_product not in products:
-            text_widget.insert("end",
-                               f"{' ' * (depth * 2)}Ошибка: Продукт {target_product} не найден.\n",
+            text_widget.insert(tk.END,
+                               f"{'  ' * depth}Ошибка: Продукт не найден\n",
                                current_color_tag)
             return
 
         product_amount = products[target_product]
         multiplier = amount_needed / product_amount
         translated_product = self.translations.get(target_product, target_product)
-        has_reactants = bool(reactants)
 
         if include_header:
-            header = f"{' ' * (depth * 2)}{format_amount(amount_needed)} {translated_product}"
-            header += " [р]" if has_reactants else ""
+            header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_product}"
             if "minTemp" in recipe:
-                header += f"\n (мин. температура: {recipe['minTemp']}K)"
-            header += ":\n" if has_reactants else "\n"
-            text_widget.insert("end", header, current_color_tag)
+                header += f" (мин. температура: {recipe['minTemp']}K)"
+            header += ":\n" if reactants else "\n"
+            text_widget.insert(tk.END, header, current_color_tag)
 
-        # Обработка реагентов
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
-            final_amount = required_amount if is_catalyst else required_amount * multiplier
+            final_amount = required_amount * (multiplier if not is_catalyst else 1)
             translated_name = self.translations.get(reactant, reactant)
 
-            # Исправленный расчет отступа
-            line_indent = (depth + 1) * 2  # Всегда добавляем +1 уровень для реактантов
-            line = f"{' ' * line_indent}{format_amount(final_amount)} {translated_name}"
-            line += " [р]" if (reactant in self.recipe_dict and not is_catalyst) else ""
-            line += " (катализатор)" if is_catalyst else ""
-            line += "\n"
+            line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {translated_name}"
+            if reactant in self.recipe_dict and not is_catalyst:
+                line += " [р]"
+            if is_catalyst:
+                line += " (катализатор)"
+            text_widget.insert(tk.END, line + "\n", current_color_tag)
 
-            text_widget.insert("end", line, current_color_tag)
-
-            # Рекурсивный вызов
             if reactant in self.recipe_dict and not is_catalyst and reactant not in visited:
-                visited.add(reactant)
+                new_visited = visited.copy()
+                new_visited.add(reactant)
                 self.resolve_reactants(
                     recipe_id=reactant,
                     amount_needed=final_amount,
-                    depth=depth + 1,  # Увеличиваем глубину
+                    depth=depth + 1,
                     target_product=reactant,
                     include_header=False,
-                    visited=visited,
+                    visited=new_visited,
                     text_widget=text_widget
                 )
 
-    def update_data_async(self):
-        update_thread = threading.Thread(target=self.update_data)
-        update_thread.start()
-
-    def update_data(self):
-        try:
-            url = "https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml"
-            response = requests.get(url)
-            if response.status_code == 200:
-                with open("recipes.yml", "w", encoding="utf-8") as f:
-                    f.write(response.text)
-                messagebox.showinfo("Обновление", "Рецепты успешно обновлены. Требуется перезагрузка для применения изменений.")
-                #self.load_recipes()
-                os._exit(0)
-
-            else:
-                messagebox.showerror("Ошибка", "Не удалось загрузить новые рецепты.")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Произошла ошибка при обновлении данных: {e}")
-
 
 if __name__ == "__main__":
-    root = Tk()
+    root = tk.Tk()
     app = ReagentCalculatorApp(root)
     root.mainloop()
