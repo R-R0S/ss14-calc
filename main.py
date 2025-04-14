@@ -472,8 +472,7 @@ class ReagentCalculatorApp:
 
         if not recipe:
             text_widget.insert(tk.END,
-                               f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден\n",
-                               current_color_tag)
+                               f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден\n", current_color_tag)
             return
 
         products = recipe.get("products", {})
@@ -482,13 +481,18 @@ class ReagentCalculatorApp:
         mixer_categories = recipe.get("requiredMixerCategories", [])
 
         is_electrolysis = 'Electrolysis' in mixer_categories
+        is_centrifuge = 'Centrifuge' in mixer_categories  # Новая проверка
         is_instant = len(effects) > 0 and len(products) == 0
 
         target_product = target_product or next(iter(products.keys()), None) if products else None
         product_amount = products.get(target_product, 0) if target_product else 0
         multiplier = amount_needed / product_amount if product_amount and not is_electrolysis and not is_instant else 0
 
-        if is_electrolysis and reactants:
+        if is_centrifuge and reactants:
+            first_reactant = next(iter(reactants.values()))
+            base_amount = first_reactant.get('amount', 0)
+            multiplier = amount_needed / base_amount if base_amount else 0
+        elif is_electrolysis and reactants:
             first_reactant = next(iter(reactants.values()))
             base_amount = first_reactant.get('amount', 0)
             multiplier = amount_needed / base_amount if base_amount else 0
@@ -501,6 +505,8 @@ class ReagentCalculatorApp:
 
             if is_electrolysis:
                 header += " [ЭЛЕКТРОЛИЗ]"
+            elif is_centrifuge:
+                header += " [ЦЕНТРИФУГА]"
             elif is_instant:
                 header += " [МГНОВЕННАЯ РЕАКЦИЯ]"
 
@@ -547,10 +553,16 @@ class ReagentCalculatorApp:
                 translated_product = self.translations.get(product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
+        if is_centrifuge:
+            products_text = []
+            for product, amount in products.items():
+                product_amount = amount * multiplier
+                translated_product = self.translations.get(product, product)
+                products_text.append(f"{format_amount(product_amount)} {translated_product}")
+
             if products_text:
                 text_widget.insert(tk.END,
-                                   f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n",
-                                   current_color_tag)
+                                   f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n", current_color_tag)
 
         elif is_instant:
             effects_text = []
