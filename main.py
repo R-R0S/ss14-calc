@@ -152,6 +152,7 @@ class ReagentCalculatorApp:
             "Nocturine": "Ноктюрин",
             "Tazinide": "Тазинид",
             "Licoxide": "Ликоксид",
+            "Foam": "Пена",
         }
 
         self.setup_directories()
@@ -386,7 +387,6 @@ class ReagentCalculatorApp:
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
                           target_product=None, include_header=True,
                           visited=None, text_widget=None):
-        # Исправленная версия функции
         def format_amount(value):
             return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
@@ -402,27 +402,46 @@ class ReagentCalculatorApp:
                                current_color_tag)
             return
 
+        # Определяем специальные типы реакций
         products = recipe.get("products", {})
         reactants = recipe.get("reactants", {})
+        effects = recipe.get("effects", [])
+        mixer_categories = recipe.get("requiredMixerCategories", [])
 
-        target_product = target_product or next(iter(products.keys()), None)
-        if not target_product or target_product not in products:
-            text_widget.insert(tk.END,
-                               f"{'  ' * depth}Ошибка: Продукт не найден\n",
-                               current_color_tag)
-            return
+        is_electrolysis = 'Electrolysis' in mixer_categories
+        is_instant = len(effects) > 0 and len(products) == 0
 
-        product_amount = products[target_product]
-        multiplier = amount_needed / product_amount
-        translated_product = self.translations.get(target_product, target_product)
+        # Базовый расчет для обычных реакций
+        target_product = target_product or next(iter(products.keys()), None) if products else None
+        product_amount = products.get(target_product, 0) if target_product else 0
+        multiplier = amount_needed / product_amount if product_amount and not is_electrolysis and not is_instant else 0
 
+        # Переопределяем расчет для специальных случаев
+        if is_electrolysis and reactants:
+            first_reactant = next(iter(reactants.values()))
+            base_amount = first_reactant.get('amount', 0)
+            multiplier = amount_needed / base_amount if base_amount else 0
+        elif is_instant:
+            multiplier = amount_needed
+
+        # Заголовок (сохраняем оригинальный формат + добавляем пометки)
+        translated_name = self.translations.get(recipe_id, recipe_id)
         if include_header:
-            header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_product}"
+            header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_name}"
+
+            # Добавляем специальные пометки
+            if is_electrolysis:
+                header += " [ЭЛЕКТРОЛИЗ]"
+            elif is_instant:
+                header += " [МГНОВЕННАЯ РЕАКЦИЯ]"
+
             if "minTemp" in recipe:
                 header += f" (мин. температура: {recipe['minTemp']}K)"
-            header += ":\n" if reactants else "\n"
-            text_widget.insert(tk.END, header, current_color_tag)
 
+            header += ":" if reactants else ""
+            text_widget.insert(tk.END, header + "\n", current_color_tag)
+
+        # Оригинальный вывод реагентов (без изменений)
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
@@ -436,6 +455,7 @@ class ReagentCalculatorApp:
                 line += " (катализатор)"
             text_widget.insert(tk.END, line + "\n", current_color_tag)
 
+            # Оригинальная рекурсия (без изменений)
             if reactant in self.recipe_dict and not is_catalyst and reactant not in visited:
                 new_visited = visited.copy()
                 new_visited.add(reactant)
@@ -448,6 +468,35 @@ class ReagentCalculatorApp:
                     visited=new_visited,
                     text_widget=text_widget
                 )
+
+        # Добавляем вывод для специальных случаев поверх основной логики
+        if is_electrolysis:
+            # Вывод продуктов электролиза
+            products_text = []
+            for product, amount in products.items():
+                product_amount = amount * multiplier
+                translated_product = self.translations.get(product, product)
+                products_text.append(f"{format_amount(product_amount)} {translated_product}")
+
+            if products_text:
+                text_widget.insert(tk.END,
+                                   f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n",
+                                   current_color_tag)
+
+        elif is_instant:
+            # Вывод эффектов мгновенной реакции
+            effects_text = []
+            for effect in effects:
+                if 'FlashReactionEffect' in str(effect):
+                    effects_text.append("Вспышка")
+                elif 'ExplosiveReactionEffect' in str(effect):
+                    effects_text.append("Взрыв")
+                else:
+                    effects_text.append("Спецэффект")
+
+            text_widget.insert(tk.END,
+                               f"{'  ' * (depth + 1)}Эффект: {' + '.join(effects_text)}\n",
+                               current_color_tag)
 
 
 if __name__ == "__main__":
