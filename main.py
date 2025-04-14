@@ -1,5 +1,6 @@
 import yaml
 import os
+import sys
 import requests
 import threading
 import webbrowser
@@ -14,7 +15,11 @@ class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("SS14 Химический калькулятор by i_love_Megumin")
-        self.root.iconbitmap('img/icon.ico')
+        if getattr(sys, 'frozen', False):
+            icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
+        else:
+            icon_path = 'img/icon.ico'
+        self.root.iconbitmap(icon_path)
         self.root.geometry("1000x650")
         self.root.configure(bg="#2e2e2e")
 
@@ -174,14 +179,22 @@ class ReagentCalculatorApp:
             os.makedirs('recipes')
 
     def load_images(self):
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_path = sys._MEIPASS
+        else:
+            base_path = os.path.dirname(__file__)
+
         try:
-            self.avatar_image = ImageTk.PhotoImage(PILImage.open("img/avatar.png").resize((80, 80)))
+            avatar_path = os.path.join(base_path, 'img', 'avatar.png')
+            self.avatar_image = ImageTk.PhotoImage(PILImage.open(avatar_path).resize((80, 80)))
         except Exception as e:
             print(f"Ошибка загрузки аватара: {str(e)}")
             self.avatar_image = None
 
         try:
-            self.discord_image = ImageTk.PhotoImage(PILImage.open("img/discord.png").resize((40, 40)))
+            discord_path = os.path.join(base_path, 'img', 'discord.png')
+            self.discord_image = ImageTk.PhotoImage(PILImage.open(discord_path).resize((40, 40)))
         except Exception as e:
             print(f"Ошибка загрузки Discord: {str(e)}")
             self.discord_image = None
@@ -342,7 +355,11 @@ class ReagentCalculatorApp:
 
                 if size != self.current_avatar_size:
                     self.current_avatar_size = size
-                    img = PILImage.open("img/avatar.png")
+                    if getattr(sys, 'frozen', False):
+                        avatar_path = os.path.join(sys._MEIPASS, 'img', 'avatar.png')
+                    else:
+                        avatar_path = 'img/avatar.png'
+                    img = PILImage.open(avatar_path)
                     img.thumbnail((size, size), PILImage.Resampling.LANCZOS)
                     self.avatar_image = ImageTk.PhotoImage(img)
                     self.avatar_label.configure(image=self.avatar_image)
