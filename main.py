@@ -153,6 +153,7 @@ class ReagentCalculatorApp:
             "Tazinide": "Тазинид",
             "Licoxide": "Ликоксид",
             "Foam": "Пена",
+            "Sulfur": "Сера",
         }
 
         self.setup_directories()
@@ -189,15 +190,28 @@ class ReagentCalculatorApp:
                 yield entry
 
     def custom_yaml_loader(self, stream):
-        class IgnoreUnknownTagsLoader(yaml.SafeLoader):
-            pass
+        class CustomLoader(yaml.SafeLoader):
+            def handle_tag(self, tag, node):
+                if tag.startswith('!type:'):
+                    return self.construct_mapping(node)
+                return super().handle_tag(tag, node)
 
-        def ignore_unknown_tag(loader, tag_suffix, node):
-            return None
+        def construct_typed_effect(loader, node):
+            if isinstance(node, yaml.MappingNode):
+                return loader.construct_mapping(node)
+            return loader.construct_scalar(node)
 
-        IgnoreUnknownTagsLoader.add_multi_constructor('!type', ignore_unknown_tag)
-        IgnoreUnknownTagsLoader.add_multi_constructor('!', ignore_unknown_tag)
-        return IgnoreUnknownTagsLoader(stream)
+        CustomLoader.add_multi_constructor('!type:', lambda loader, tag_suffix, node: {
+            'type': tag_suffix,
+            **loader.construct_mapping(node)
+        } if isinstance(node, yaml.MappingNode) else {'type': tag_suffix})
+
+        CustomLoader.add_constructor(
+            yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+            lambda loader, node: loader.construct_mapping(node)
+        )
+
+        return CustomLoader(stream)
 
     def create_widgets(self):
         main_frame = tk.Frame(self.root, bg="#2e2e2e")
@@ -214,7 +228,7 @@ class ReagentCalculatorApp:
 
         tk.Label(category_frame,
                 text="Выберите категорию:",
-                font=("Arial", 12),
+                font=("Arial", 14),
                 fg="white",
                 bg="#2e2e2e").pack(anchor=tk.W)
 
@@ -223,7 +237,7 @@ class ReagentCalculatorApp:
             textvariable=self.category_var,
             values=list(self.recipe_categories.keys()),
             state="readonly",
-            font=("Arial", 11))
+            font=("Arial", 13))
         self.category_combobox.pack(fill=tk.X, pady=5)
         self.category_combobox.bind("<<ComboboxSelected>>", self.update_recipes_list)
 
@@ -234,7 +248,7 @@ class ReagentCalculatorApp:
 
         tk.Label(recipe_frame,
                 text="Выберите рецепт:",
-                font=("Arial", 12),
+                font=("Arial", 14),
                 fg="white",
                 bg="#2e2e2e").pack(anchor=tk.W)
 
@@ -242,7 +256,7 @@ class ReagentCalculatorApp:
             recipe_frame,
             textvariable=self.recipe_var,
             state="readonly",
-            font=("Arial", 11))
+            font=("Arial", 13))
         self.recipe_combobox.pack(fill=tk.X, pady=5)
 
         # Ввод количества
@@ -251,13 +265,13 @@ class ReagentCalculatorApp:
 
         tk.Label(amount_frame,
                  text="Количество продукта:",
-                 font=("Arial", 12),
+                 font=("Arial", 13),
                  fg="white",
                  bg="#2e2e2e").pack(anchor=tk.W)
 
         self.amount_entry = tk.Entry(
             amount_frame,
-            font=("Arial", 12),
+            font=("Arial", 13),
             bg="#4f4f4f",
             fg="white"
         )
@@ -488,19 +502,30 @@ class ReagentCalculatorApp:
                                    current_color_tag)
 
         elif is_instant:
-            # Вывод эффектов мгновенной реакции
             effects_text = []
             for effect in effects:
-                if 'FlashReactionEffect' in str(effect):
-                    effects_text.append("Вспышка")
-                elif 'ExplosiveReactionEffect' in str(effect):
-                    effects_text.append("Взрыв")
-                else:
-                    effects_text.append("Спецэффект")
+                if isinstance(effect, dict):
+                    effect_type = effect.get('type', '').split(':')[-1]
+                    details = []
 
-            text_widget.insert(tk.END,
-                               f"{'  ' * (depth + 1)}Эффект: {' + '.join(effects_text)}\n",
-                               current_color_tag)
+                    if effect_type == 'CreateGas':
+                        details.append(f"Создает газ: {effect.get('gas', 'Неизвестно')}")
+                    elif effect_type == 'PopupMessage':
+                        details.append(f"Сообщение: {', '.join(effect.get('messages', []))}")
+                    elif effect_type == 'EmpReactionEffect':
+                        details.append(f"ЭМИ радиус: {effect.get('maxRange', 0)}м")
+
+                    if details:
+                        effects_text.append(f"{effect_type} ({'; '.join(details)})")
+                    else:
+                        effects_text.append(effect_type)
+                else:
+                    effects_text.append(str(effect))
+
+            if effects_text:
+                text_widget.insert(tk.END,
+                                   f"{'  ' * (depth + 1)}Эффекты: {' | '.join(effects_text)}\n",
+                                   current_color_tag)
 
 
 if __name__ == "__main__":
