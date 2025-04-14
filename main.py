@@ -2,6 +2,9 @@ import yaml
 import os
 import requests
 import threading
+import webbrowser
+from PIL import Image as PILImage
+from PIL import ImageTk
 from tkinter import *
 from tkinter import messagebox, ttk
 import tkinter as tk
@@ -10,11 +13,11 @@ import tkinter as tk
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Reagent Calculator")
-        self.root.geometry("1000x600")
+        self.root.title("SS14 Химический калькулятор by i_love_Megumin")
+        self.root.iconbitmap('img/icon.ico')
+        self.root.geometry("1000x650")
         self.root.configure(bg="#2e2e2e")
 
-        # Конфигурация категорий
         self.recipe_categories = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
@@ -23,8 +26,8 @@ class ReagentCalculatorApp:
 
         self.recipes = []
         self.recipe_dict = {}
-        # Словарь для перевода
         self.translations = {
+            "medicine": "Медикоменты",
             "Dylovene": "Диловен",
             "TableSalt": "Столовая Соль",
             "SpaceDrugs": "Космический мираж",
@@ -38,7 +41,7 @@ class ReagentCalculatorApp:
             "MindbreakerToxin": "Токсин Майндбрейкер",
             "ZombieBlood": "Кровь зомби",
             "AmbuzolPlus": "Амбузол Плюс",
-            "Ambuzol": "Абузол",
+            "Ambuzol": "Амбузол",
             "Blood": "Кровь",
             "Phalanximine": "Фалангимин",
             "Fersilicite": "Силицид железа",
@@ -59,9 +62,9 @@ class ReagentCalculatorApp:
             "Bruizine": "Бруизин",
             "Phenol": "Фенол",
             "Lacerinol": "Лацеринол",
-            "BicarLacerinol": "BicarLacerinol Razorium",
-            "BicarPuncturase": "BicarPuncturase Razorium",
-            "BicarBruizine": "BicarBruizine Razorium",
+            "BicarLacerinol": "BicarLacerinol",
+            "BicarPuncturase": "BicarPuncturase",
+            "BicarBruizine": "BicarBruizine",
             "Puncturase": "Пунктураз",
             "Acetone": "Ацетон",
             "Hydroxide": "Гидроксид",
@@ -154,15 +157,35 @@ class ReagentCalculatorApp:
             "Licoxide": "Ликоксид",
             "Foam": "Пена",
             "Sulfur": "Сера",
+            "Sodium": "Натрий",
+            "ChlorineTrifluoride": "Трифторид хлора",
+            "Napalm": "Напалм",
+            "Phlogiston": "Флогистон",
+            "WeldingFuelBreakdown": "Разложение топлива",
         }
 
         self.setup_directories()
         self.load_recipes()
+        self.load_images()
         self.create_widgets()
 
     def setup_directories(self):
         if not os.path.exists('recipes'):
             os.makedirs('recipes')
+
+    def load_images(self):
+        try:
+            self.avatar_image = ImageTk.PhotoImage(PILImage.open("img/avatar.png").resize((80, 80)))
+        except Exception as e:
+            print(f"Ошибка загрузки аватара: {str(e)}")
+            self.avatar_image = None
+
+        try:
+            self.discord_image = ImageTk.PhotoImage(PILImage.open("img/discord.png").resize((40, 40)))
+        except Exception as e:
+            print(f"Ошибка загрузки Discord: {str(e)}")
+            self.discord_image = None
+
 
     def load_recipes(self):
         self.recipes = []
@@ -184,10 +207,12 @@ class ReagentCalculatorApp:
         self.recipe_dict = {recipe['id']: recipe for recipe in self.recipes}
         self.recipes.sort(key=lambda x: x['id'].lower())
 
+
     def filter_recipes(self, raw_data):
         for entry in raw_data:
             if isinstance(entry, dict) and entry.get("type") == "reaction" and "id" in entry and "reactants" in entry:
                 yield entry
+
 
     def custom_yaml_loader(self, stream):
         class CustomLoader(yaml.SafeLoader):
@@ -213,15 +238,14 @@ class ReagentCalculatorApp:
 
         return CustomLoader(stream)
 
+
     def create_widgets(self):
         main_frame = tk.Frame(self.root, bg="#2e2e2e")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Левая панель
         left_panel = tk.Frame(main_frame, bg="#2e2e2e")
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=10)
 
-        # Выбор категории
         self.category_var = tk.StringVar()
         category_frame = tk.Frame(left_panel, bg="#2e2e2e")
         category_frame.pack(fill=tk.X, pady=5)
@@ -241,7 +265,6 @@ class ReagentCalculatorApp:
         self.category_combobox.pack(fill=tk.X, pady=5)
         self.category_combobox.bind("<<ComboboxSelected>>", self.update_recipes_list)
 
-        # Выбор рецепта
         self.recipe_var = tk.StringVar()
         recipe_frame = tk.Frame(left_panel, bg="#2e2e2e")
         recipe_frame.pack(fill=tk.X, pady=5)
@@ -259,7 +282,6 @@ class ReagentCalculatorApp:
             font=("Arial", 13))
         self.recipe_combobox.pack(fill=tk.X, pady=5)
 
-        # Ввод количества
         amount_frame = tk.Frame(left_panel, bg="#2e2e2e")
         amount_frame.pack(fill=tk.X, pady=5)
 
@@ -278,7 +300,6 @@ class ReagentCalculatorApp:
         self.amount_entry.pack(fill=tk.X, pady=5)
         self.amount_entry.insert(0, "90")
 
-        # Кнопки
         button_frame = tk.Frame(left_panel, bg="#2e2e2e")
         button_frame.pack(fill=tk.X, pady=10)
 
@@ -302,7 +323,53 @@ class ReagentCalculatorApp:
         )
         self.update_btn.pack(side=tk.RIGHT, padx=5)
 
-        # Правая панель с результатами
+        self.avatar_container = tk.Frame(left_panel,
+                                         bg="#2e2e2e",
+                                         height=300)
+        self.avatar_container.pack(fill=tk.X, pady=5)
+        self.avatar_container.pack_propagate(False)
+
+        if hasattr(self, 'avatar_image') and self.avatar_image:
+            self.avatar_label = tk.Label(self.avatar_container,
+                                         image=self.avatar_image,
+                                         bg="#2e2e2e")
+            self.avatar_label.pack(fill=tk.BOTH, expand=True)
+
+            def safe_resize(event):
+                w = self.avatar_container.winfo_width() + 25
+                h = self.avatar_container.winfo_height() + 25
+                size = min(w, h)
+
+                if size != self.current_avatar_size:
+                    self.current_avatar_size = size
+                    img = PILImage.open("img/avatar.png")
+                    img.thumbnail((size, size), PILImage.Resampling.LANCZOS)
+                    self.avatar_image = ImageTk.PhotoImage(img)
+                    self.avatar_label.configure(image=self.avatar_image)
+
+            self.current_avatar_size = 0
+            self.avatar_container.bind("<Configure>", safe_resize)
+
+        discord_frame = tk.Frame(left_panel,
+                                 bg="#2e2e2e",
+                                 height=40)
+        discord_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
+        discord_frame.pack_propagate(False)
+
+        if hasattr(self, 'discord_image') and self.discord_image:
+            discord_btn = tk.Label(discord_frame,
+                                   image=self.discord_image,
+                                   bg="#2e2e2e",
+                                   cursor="hand2")
+            discord_btn.pack(side=tk.LEFT, padx=5)
+            discord_btn.bind("<Button-1>", lambda e: webbrowser.open("https://discord.com/users/317692089355862016"))
+
+        tk.Label(discord_frame,
+                 text=f"©FelinidsPower,\n «Надежда» - 3025г.",
+                 fg="white",
+                 bg="#2e2e2e",
+                 font=("Arial Black", 9)).pack(side=tk.LEFT, padx=5)
+
         right_panel = tk.Frame(main_frame, bg="#2e2e2e")
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10)
 
@@ -317,7 +384,6 @@ class ReagentCalculatorApp:
         )
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
-        # Настройка цветов для уровней
         self.depth_colors = [
             "#FFFFFF", "#4EC9B0", "#569CD6",
             "#B5CEA8", "#CE9178", "#C586C0"
@@ -330,10 +396,8 @@ class ReagentCalculatorApp:
         if not selected_category:
             return
 
-        # Фильтруем рецепты по выбранной категории
         filtered_recipes = [r for r in self.recipes if r['category'] == selected_category]
 
-        # Получаем переведенные названия
         translated_names = []
         self.recipe_map = {}
         for recipe in filtered_recipes:
@@ -341,7 +405,6 @@ class ReagentCalculatorApp:
             translated_names.append(translated)
             self.recipe_map[translated] = recipe['id']
 
-        # Обновляем список рецептов
         self.recipe_combobox['values'] = translated_names
         if translated_names:
             self.recipe_var.set(translated_names[0])
@@ -354,14 +417,12 @@ class ReagentCalculatorApp:
 
     def update_data(self):
         try:
-            # Скачиваем все категории
             for category, url in self.recipe_categories.items():
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
                         f.write(response.text)
 
-            # Перезагружаем рецепты
             self.load_recipes()
             self.update_recipes_list()
             messagebox.showinfo("Обновление", "Данные успешно обновлены!")
@@ -375,7 +436,6 @@ class ReagentCalculatorApp:
             messagebox.showwarning("Ошибка", "Выберите рецепт")
             return
 
-        # Получаем оригинальный ID рецепта
         recipe_id = self.recipe_map.get(selected_translation)
         if not recipe_id:
             messagebox.showerror("Ошибка", "Неверный выбор рецепта")
@@ -416,7 +476,6 @@ class ReagentCalculatorApp:
                                current_color_tag)
             return
 
-        # Определяем специальные типы реакций
         products = recipe.get("products", {})
         reactants = recipe.get("reactants", {})
         effects = recipe.get("effects", [])
@@ -425,12 +484,10 @@ class ReagentCalculatorApp:
         is_electrolysis = 'Electrolysis' in mixer_categories
         is_instant = len(effects) > 0 and len(products) == 0
 
-        # Базовый расчет для обычных реакций
         target_product = target_product or next(iter(products.keys()), None) if products else None
         product_amount = products.get(target_product, 0) if target_product else 0
         multiplier = amount_needed / product_amount if product_amount and not is_electrolysis and not is_instant else 0
 
-        # Переопределяем расчет для специальных случаев
         if is_electrolysis and reactants:
             first_reactant = next(iter(reactants.values()))
             base_amount = first_reactant.get('amount', 0)
@@ -438,12 +495,10 @@ class ReagentCalculatorApp:
         elif is_instant:
             multiplier = amount_needed
 
-        # Заголовок (сохраняем оригинальный формат + добавляем пометки)
         translated_name = self.translations.get(recipe_id, recipe_id)
         if include_header:
             header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_name}"
 
-            # Добавляем специальные пометки
             if is_electrolysis:
                 header += " [ЭЛЕКТРОЛИЗ]"
             elif is_instant:
@@ -455,7 +510,6 @@ class ReagentCalculatorApp:
             header += ":" if reactants else ""
             text_widget.insert(tk.END, header + "\n", current_color_tag)
 
-        # Оригинальный вывод реагентов (без изменений)
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
@@ -473,7 +527,6 @@ class ReagentCalculatorApp:
                 line += " (катализатор)"
             text_widget.insert(tk.END, line + "\n", current_color_tag)
 
-            # Оригинальная рекурсия (без изменений)
             if reactant in self.recipe_dict and not is_catalyst and reactant not in visited:
                 new_visited = visited.copy()
                 new_visited.add(reactant)
@@ -487,9 +540,7 @@ class ReagentCalculatorApp:
                     text_widget=text_widget
                 )
 
-        # Добавляем вывод для специальных случаев поверх основной логики
         if is_electrolysis:
-            # Вывод продуктов электролиза
             products_text = []
             for product, amount in products.items():
                 product_amount = amount * multiplier
