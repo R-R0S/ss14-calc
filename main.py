@@ -93,6 +93,23 @@ class ReagentCalculatorApp:
             "Sigynate": "Сигинат",
             "SodiumCarbonate": "Карбонат натрия",
             "SodiumHydroxide": "Гидроксид натрия",
+            "Diphenhydramine": "Дифенгидрамин",
+            "Diethylamine": "Диэтиламин",
+            "Oil": "Масло",
+            "Pyrazine": "Пиразин",
+            "Insuzine": "Инсузин",
+            "Opporozidone": "Оппорозидон",
+            "Necrosol": "Некрозол",
+            "Omnizine": "Омнизин",
+            "Psicodine": "Псикодин",
+            "Lipolicide": "Липолицид",
+            "Ephedrine": "Эфедрин",
+            "Happiness": "Счастье",
+            "Laughter": "Смех",
+            "PotassiumIodide": "Иодид калия",
+            "Haloperidol": "Галоперидол",
+            "Aloxadone": "Алоксадон"
+
         }
 
         self.load_recipes()
@@ -103,6 +120,7 @@ class ReagentCalculatorApp:
             if os.path.exists("recipes.yml"):
                 with open("recipes.yml", "r", encoding="utf-8") as f:
                     self.recipes = list(self.filter_recipes(yaml.load(f, Loader=self.custom_yaml_loader)))
+                    self.recipes.sort(key=lambda x: x['id'].lower())
                     self.recipe_dict = {recipe['id']: recipe for recipe in self.recipes if 'id' in recipe}
         except Exception as e:
             print(f"Ошибка при загрузке рецептов: {e}")
@@ -249,7 +267,7 @@ class ReagentCalculatorApp:
             header = f"{' ' * (depth * 2)}{format_amount(amount_needed)} {translated_product}"
             header += " [р]" if has_reactants else ""
             if "minTemp" in recipe:
-                header += f" (мин. температура: {recipe['minTemp']}K)"
+                header += f"\n (мин. температура: {recipe['minTemp']}K)"
             header += ":\n" if has_reactants else "\n"
             text_widget.insert("end", header, current_color_tag)
 
@@ -293,8 +311,10 @@ class ReagentCalculatorApp:
             if response.status_code == 200:
                 with open("recipes.yml", "w", encoding="utf-8") as f:
                     f.write(response.text)
-                messagebox.showinfo("Обновление", "Рецепты успешно обновлены.")
-                self.load_recipes()
+                messagebox.showinfo("Обновление", "Рецепты успешно обновлены. Требуется перезагрузка для применения изменений.")
+                #self.load_recipes()
+                os._exit(0)
+
             else:
                 messagebox.showerror("Ошибка", "Не удалось загрузить новые рецепты.")
         except Exception as e:
