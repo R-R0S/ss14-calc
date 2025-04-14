@@ -152,6 +152,7 @@ class ReagentCalculatorApp:
             "Nocturine": "Ноктюрин",
             "Tazinide": "Тазинид",
             "Licoxide": "Ликоксид",
+            "Foam": "Пена",
         }
 
         self.setup_directories()
@@ -386,7 +387,6 @@ class ReagentCalculatorApp:
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
                           target_product=None, include_header=True,
                           visited=None, text_widget=None):
-        # Исправленная версия функции
         def format_amount(value):
             return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
@@ -402,27 +402,45 @@ class ReagentCalculatorApp:
                                current_color_tag)
             return
 
+        # Определяем тип реакции
+        is_electrolysis = 'Electrolysis' in recipe.get('requiredMixerCategories', [])
+        special_processing = recipe.get('requiredMixerCategories', [])
+
         products = recipe.get("products", {})
         reactants = recipe.get("reactants", {})
 
-        target_product = target_product or next(iter(products.keys()), None)
-        if not target_product or target_product not in products:
-            text_widget.insert(tk.END,
-                               f"{'  ' * depth}Ошибка: Продукт не найден\n",
-                               current_color_tag)
-            return
+        # Для обычных реакций: множитель рассчитываем по продукту
+        if not is_electrolysis:
+            target_product = target_product or next(iter(products.keys()), None)
+            product_amount = products.get(target_product, 0)
+            multiplier = amount_needed / product_amount if product_amount else 0
+        else:
+            # Для электролиза: множитель рассчитываем по первому реагенту
+            if reactants:
+                first_reactant = next(iter(reactants.values()))
+                base_amount = first_reactant.get('amount', 0)
+                multiplier = amount_needed / base_amount if base_amount else 0
+            else:
+                multiplier = 0
 
-        product_amount = products[target_product]
-        multiplier = amount_needed / product_amount
-        translated_product = self.translations.get(target_product, target_product)
+        translated_product = self.translations.get(recipe_id, recipe_id)
 
+        # Формируем заголовок
         if include_header:
             header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_product}"
+
+            if is_electrolysis:
+                header += " [ЭЛЕКТРОЛИЗ]"
+            elif special_processing:
+                header += f" [{', '.join(special_processing)}]"
+
             if "minTemp" in recipe:
                 header += f" (мин. температура: {recipe['minTemp']}K)"
-            header += ":\n" if reactants else "\n"
-            text_widget.insert(tk.END, header, current_color_tag)
 
+            header += ":" if reactants or is_electrolysis else ""
+            text_widget.insert(tk.END, header + "\n", current_color_tag)
+
+        # Выводим реагенты
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
@@ -436,20 +454,32 @@ class ReagentCalculatorApp:
                 line += " (катализатор)"
             text_widget.insert(tk.END, line + "\n", current_color_tag)
 
-            if reactant in self.recipe_dict and not is_catalyst and reactant not in visited:
+        # Специальный вывод для электролиза
+        if is_electrolysis:
+            products_text = []
+            for product, amount in products.items():
+                product_amount = amount * multiplier
+                translated_product = self.translations.get(product, product)
+                products_text.append(f"{format_amount(product_amount)} {translated_product}")
+
+            if products_text:
+                text = f"{'  ' * (depth + 1)}⇒ {' + '.join(products_text)} (электролиз)"
+                text_widget.insert(tk.END, text + "\n", current_color_tag)
+
+        # Рекурсия для вложенных рецептов
+        for reactant, info in reactants.items():
+            if reactant in self.recipe_dict and not info.get("catalyst", False) and reactant not in visited:
                 new_visited = visited.copy()
                 new_visited.add(reactant)
                 self.resolve_reactants(
                     recipe_id=reactant,
-                    amount_needed=final_amount,
+                    amount_needed=required_amount * multiplier,
                     depth=depth + 1,
                     target_product=reactant,
                     include_header=False,
                     visited=new_visited,
                     text_widget=text_widget
                 )
-
-
 if __name__ == "__main__":
     root = tk.Tk()
     app = ReagentCalculatorApp(root)
