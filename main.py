@@ -17,13 +17,78 @@ class ReagentCalculatorApp:
 
         # Словарь для перевода
         self.translations = {
+            "Dylovene": "Диловен",
+            "TableSalt": "Столовая Соль",
+            "SpaceDrugs": "Космический мираж",
+            "Lexorin": "Лексорин",
+            "Mannitol": "Маннитол",
+            "Vestine": "Вестин",
+            "Lipozine": "Липозин",
+            "Mercury": "Ртуть",
+            "Impedrezene": "Импедрезен",
+            "HeartbreakerToxin": "Токсин Хартбрейкер",
+            "MindbreakerToxin": "Токсин Майндбрейкер",
+            "ZombieBlood": "Кровь зомби",
+            "AmbuzolPlus": "Амбузол Плюс",
+            "Ambuzol": "Абузол",
+            "Blood": "Кровь",
+            "Phalanximine": "Фалангимин",
+            "Fersilicite": "Силицид железа",
+            "Leporazine": "Лепоразин",
+            "Copper": "Медь",
+            "Silicon": "Кремний",
+            "Ammonia": "Аммиак",
+            "TranexamicAcid": "Транексамовая кислота",
+            "Nitrogen": "Азот",
+            "SulfuricAcid": "Серная кислота",
+            "Potassium": "Калий",
+            "Ethylredoxrazine": "Этилредоксразин",
+            "Oxygen": "Кислород",
+            "Iron": "Железо",
+            "Radium": "Радий",
+            "Carbon": "Углерод",
+            "Chlorine": "Хлор",
+            "Phenol": "Фенол",
+            "Lacerinol": "Лацеринол",
+            "Puncturase": "Пунктураз",
+            "Acetone": "Ацетон",
+            "Hydroxide": "Гидроксид",
+            "Cryptobiolin": "Криптобиолин",
+            "Sugar": "Сахар",
+            "Saline": "физ. раствор",
+            "Ipecac": "Ипекак",
+            "Epinephrine": "Эпинефрин",
+            "Benzene": "Бензол",
+            "UnstableMutagen": "Нестабильный мутаген",
+            "Bicaridine": "Бикаридин",
+            "Cryoxadone": "Криоксадон",
+            "Doxarubixadone": "Доксарубиксадон",
+            "Inaprovaline": "Инапровалин",
+            "Water": "Вода",
+            "Arithrazine": "Аритразин",
+            "Kelotane": "Келотан",
+            "Phosphorus": "Фосфор",
+            "Hydrogen": "Водород",
+            "Plasma": "Плазма",
             "Dexalin": "Дексалин",
             "Dermaline": "Дермалин",
-            "Hyronalin": "Гидролин",
+            "Hyronalin": "Хироналин",
             "DexalinPlus": "Дексалин Плюс",
-            # Добавьте переводы для названий рецептов
-            "Recipe1": "Рецепт 1",
-            "Recipe2": "Рецепт 2",
+            "Ultravasculine": "Ультраваскулин",
+            "Ethanol": "Этанол",
+            "Synaptizine": "Синаптизин",
+            "Histamine": "Гистамин",
+            "Lithium": "Литий",
+            "Tricordrazine": "Трикордразин",
+            "Oculine": "Окулин",
+            "Siderlac": "Сидерлак",
+            "Aloe": "Алоэ",
+            "Stellibinin": "Стеллибинин",
+            "Cognizine": "Когнизин",
+            "CarpoToxin": "Карпотоксин",
+            "Sigynate": "Сигинат",
+            "SodiumCarbonate": "Карбонат натрия",
+            "SodiumHydroxide": "Гидроксид натрия",
         }
 
         # Инициализация переменной для выпадающего меню
@@ -152,7 +217,7 @@ class ReagentCalculatorApp:
                     messagebox.showwarning("Предупреждение", "Введите корректное количество!")
                     return
 
-            result_str = self.resolve_reactants(selected_recipe['id'], product_amount)
+            result_str = self.resolve_reactants(selected_recipe['id'], product_amount, target_product=selected_recipe['id'])
 
             self.result_text.delete(1.0, END)
             self.result_text.insert(END, result_str)
@@ -160,33 +225,44 @@ class ReagentCalculatorApp:
         else:
             messagebox.showerror("Ошибка", "Не удалось найти рецепт.")
 
-    def resolve_reactants(self, recipe_id, amount_needed, depth=0):
-        """Рекурсивно решает, какие реагенты нужны для производства продукта, с учетом составных реагентов."""
+    def resolve_reactants(self, recipe_id, amount_needed, depth=0, target_product=None):
+        """Рекурсивно решает, какие реагенты нужны для производства нужного продукта."""
+
         recipe = self.recipe_dict.get(recipe_id)
         if not recipe:
-            return "Ошибка: Рецепт не найден."
+            return f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден.\n"
 
-        reactants = recipe.get("reactants", {})
         products = recipe.get("products", {})
-        if not products:
-            return f"Ошибка: Нет продуктов в рецепте {recipe_id}."
+        reactants = recipe.get("reactants", {})
 
-        product_name = list(products.keys())[0]
-        product_amount = products[product_name]
+        # Определяем нужный продукт: либо явно передан, либо по умолчанию берём первый
+        if target_product is None:
+            # В данном случае выбор продукта, который совпадает с `product_name` (например AmbuzolPlus)
+            target_product = max(products, key=products.get, default=None)
+
+        if not target_product or target_product not in products:
+            return f"{'  ' * depth}Ошибка: Продукт {target_product} не найден в рецепте {recipe_id}.\n"
+
+        product_amount = products[target_product]
         multiplier = amount_needed / product_amount
 
-        result_str = f"{'  ' * depth}{amount_needed:.2f} {product_name} (Рецепт {recipe_id}):\n"
+        translated_product = self.translations.get(target_product, target_product)
+        result_str = f"{'  ' * depth}{amount_needed:.2f} {translated_product} (Рецепт {recipe_id}):\n"
 
+        # Обрабатываем каждый реагент
         for reactant, info in reactants.items():
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
             final_amount = required_amount if is_catalyst else required_amount * multiplier
 
-            result_str += f"{'  ' * (depth + 1)}{reactant}: {final_amount:.2f}" + (" (катализатор)" if is_catalyst else "") + "\n"
+            # Переводим имя реагента
+            translated_reactant_name = self.translations.get(reactant, reactant)
+            result_str += f"{'  ' * (depth + 1)}{translated_reactant_name}: {final_amount:.2f}" + (
+                " (катализатор)" if is_catalyst else "") + "\n"
 
-            # Рекурсивно проходим, если реагент является составным
+            # Рекурсивно разбираем составной реагент, если он есть
             if reactant in self.recipe_dict and not is_catalyst:
-                result_str += self.resolve_reactants(reactant, final_amount, depth + 2)
+                result_str += self.resolve_reactants(reactant, final_amount, depth + 2, target_product=reactant)
 
         return result_str
 
