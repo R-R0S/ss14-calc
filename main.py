@@ -26,7 +26,8 @@ class ReagentCalculatorApp:
         self.recipe_categories = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
-            'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml'
+            'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml'
         }
 
         self.recipes = []
@@ -167,6 +168,9 @@ class ReagentCalculatorApp:
             "Napalm": "Напалм",
             "Phlogiston": "Флогистон",
             "WeldingFuelBreakdown": "Разложение топлива",
+            "Fomepizole": "Фомепизол",
+            "Harai": "Харай",
+            "Cerebrin": "Церебрин",
         }
 
         self.setup_directories()
@@ -225,7 +229,6 @@ class ReagentCalculatorApp:
         for entry in raw_data:
             if isinstance(entry, dict) and entry.get("type") == "reaction" and "id" in entry and "reactants" in entry:
                 yield entry
-
 
     def custom_yaml_loader(self, stream):
         class CustomLoader(yaml.SafeLoader):
