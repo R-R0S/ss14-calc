@@ -450,7 +450,11 @@ class ReagentCalculatorApp:
 
             line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {translated_name}"
             if reactant in self.recipe_dict and not is_catalyst:
-                line += " [р]"
+                component_recipe = self.recipe_dict[reactant]
+                if "minTemp" in component_recipe:
+                    line += f" [р] (мин. температура: {component_recipe['minTemp']}K)"
+                else:
+                    line += " [р]"
             if is_catalyst:
                 line += " (катализатор)"
             text_widget.insert(tk.END, line + "\n", current_color_tag)
