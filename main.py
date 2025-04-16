@@ -1,3 +1,4 @@
+#v0.32103
 import yaml
 import os
 import sys
@@ -8,14 +9,13 @@ from PIL import Image as PILImage
 from PIL import ImageTk
 from tkinter import *
 from tkinter import messagebox, ttk
-from tkinter import Toplevel, Button, Label, Text, Frame
 import tkinter as tk
 
 
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("SS14 Химический калькулятор by i_love_Megumin")
+        self.root.title("SS14 Химический калькулятор by i_love_Megumin v0.32103")
         if getattr(sys, 'frozen', False):
             icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
         else:
@@ -179,10 +179,10 @@ class ReagentCalculatorApp:
         self.load_images()
         self.create_widgets()
 
-        self.overlay_window = None  # Добавляем ссылку на окно поверх
+        self.overlay_window = None
         self.overlay_content = None
 
-    # Добавляем методы для обработки ресайза
+
     def start_resize(self, event, side):
         self.overlay_window._resize_data = {
             'side': side,
@@ -224,7 +224,6 @@ class ReagentCalculatorApp:
             width += dx
             width = max(width, self.overlay_window.minsize()[0])
 
-        # Корректируем позицию для угловых зон
         if side in ('nw', 'ne', 'sw', 'se'):
             if 'n' in side:
                 height = data['start_h'] - dy
@@ -237,7 +236,6 @@ class ReagentCalculatorApp:
             if 'e' in side:
                 width = data['start_w'] + dx
 
-        # Применяем новые размеры и позицию
         self.overlay_window.geometry(f"{width}x{height}+{x}+{y}")
 
     def toggle_overlay(self):
@@ -249,7 +247,6 @@ class ReagentCalculatorApp:
             self.create_overlay_window()
             self.overlay_btn.config(text="🖥️ Скрыть оверлей")
 
-    # В методе create_overlay_window изменим создание окна:
     def create_overlay_window(self):
         self.overlay_window = tk.Toplevel(self.root)
         self.overlay_window.wm_attributes("-topmost", True)
@@ -257,6 +254,7 @@ class ReagentCalculatorApp:
         self.overlay_window.overrideredirect(True)
         self.overlay_window.geometry("400x300+100+100")
         self.overlay_window.minsize(200, 150)
+        self.overlay_window.wm_attributes("-alpha", 0.95)
 
         # Главный контейнер
         main_frame = tk.Frame(self.overlay_window, bg='#2e2e2e')
@@ -289,15 +287,13 @@ class ReagentCalculatorApp:
         title_label.bind("<ButtonPress-1>", self.start_move)
         title_label.bind("<B1-Motion>", self.on_move)
 
-        # Обновляем контент оверлея
         self.update_overlay_content()
 
 
     def setup_resize_zones(self, parent):
         resize_size = 2
-        bg_color = '#2e2e2e'  # Цвет фона родительского окна
+        bg_color = '#2e2e2e'
 
-        # Создаем фреймы для ресайза с фоном как у родителя
         resize_frames = {
             'n': tk.Frame(parent, bg=bg_color, height=resize_size, cursor='sb_v_double_arrow',
                           borderwidth=0, highlightthickness=0),
@@ -317,7 +313,6 @@ class ReagentCalculatorApp:
                            cursor='size_nw_se', borderwidth=0, highlightthickness=0)
         }
 
-        # Размещаем фреймы
         resize_frames['n'].place(relx=0, rely=0, relwidth=1)
         resize_frames['s'].place(relx=0, rely=1, relwidth=1, anchor='sw')
         resize_frames['e'].place(relx=1, rely=0, relheight=1, anchor='ne')
@@ -328,7 +323,6 @@ class ReagentCalculatorApp:
         resize_frames['sw'].place(relx=0, rely=1, anchor='sw')
         resize_frames['se'].place(relx=1, rely=1, anchor='se')
 
-        # Привязываем обработчики
         for side, frame in resize_frames.items():
             frame.bind("<ButtonPress-1>", lambda e, s=side: self.start_resize(e, s))
             frame.bind("<B1-Motion>", lambda e, s=side: self.on_resize(e, s))
@@ -340,7 +334,6 @@ class ReagentCalculatorApp:
             "sw": "size_ne_sw",
             "se": "size_nw_se"
         }
-        # Используем тот же цвет фона, что и у окна
         frame = tk.Frame(parent, bg='#2e2e2e', width=size, height=size,
                          cursor=cursors[corner], borderwidth=0, highlightthickness=0)
 
@@ -370,12 +363,10 @@ class ReagentCalculatorApp:
         if not self.overlay_window or not self.overlay_content:
             return
 
-        # Копируем контент из основного текстового поля
         main_content = self.result_text.get("1.0", tk.END)
         self.overlay_content.delete("1.0", tk.END)
         self.overlay_content.insert(tk.END, main_content)
 
-        # Копируем форматирование (цвета)
         for tag in self.result_text.tag_names():
             self.overlay_content.tag_config(tag, foreground=self.result_text.tag_cget(tag, "foreground"))
             ranges = self.result_text.tag_ranges(tag)
@@ -472,20 +463,16 @@ class ReagentCalculatorApp:
         category_frame = tk.Frame(left_panel, bg="#2e2e2e")
         category_frame.pack(fill=tk.X, pady=5)
 
-        # Создадим фрейм для нижних кнопок
         bottom_frame = tk.Frame(self.root, bg="#2e2e2e", height=40)
         bottom_frame.pack(fill=tk.X, pady=(0, 10), padx=10)
         bottom_frame.pack_propagate(False)
 
-        # Левая часть (аватар + текст)
         left_bottom = tk.Frame(bottom_frame, bg="#2e2e2e")
         left_bottom.pack(side=tk.LEFT)
 
-        # Добавим правую группу кнопок
         right_buttons = tk.Frame(bottom_frame, bg="#2e2e2e")
         right_buttons.pack(side=tk.RIGHT)
 
-        # Перенесём кнопку оверлея в нижний фрейм слева
         self.overlay_btn = tk.Button(
             right_buttons,
             text="🖥️ Показать оверлей",
@@ -496,7 +483,6 @@ class ReagentCalculatorApp:
         )
         self.overlay_btn.pack(side=tk.LEFT, padx=2)
 
-        # Кнопка GitHub
         github_btn = tk.Button(
             right_buttons,
             text="GitHub",
@@ -507,7 +493,6 @@ class ReagentCalculatorApp:
         )
         github_btn.pack(side=tk.LEFT, padx=5)
 
-        # Декоративная кнопка
         decorative_btn = tk.Button(
             right_buttons,
             text="⚙️",
@@ -603,7 +588,6 @@ class ReagentCalculatorApp:
                 image=self.avatar_image,
                 bg="#2e2e2e"
             )
-            # Используем place для автоматического скрытия при нехватке места
             self.avatar_label.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
 
             def safe_resize(event):
@@ -627,7 +611,6 @@ class ReagentCalculatorApp:
             self.current_avatar_size = 0
             self.avatar_container.bind("<Configure>", safe_resize)
 
-        # Discord и текст теперь в left_bottom
         discord_frame = tk.Frame(left_bottom, bg="#2e2e2e")
         discord_frame.pack(side=tk.LEFT, padx=5)
 
