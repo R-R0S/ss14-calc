@@ -8,6 +8,7 @@ from PIL import Image as PILImage
 from PIL import ImageTk
 from tkinter import *
 from tkinter import messagebox, ttk
+from tkinter import Toplevel, Button, Label, Text, Frame
 import tkinter as tk
 
 
@@ -178,6 +179,211 @@ class ReagentCalculatorApp:
         self.load_images()
         self.create_widgets()
 
+        self.overlay_window = None  # Добавляем ссылку на окно поверх
+        self.overlay_content = None
+
+    # Добавляем методы для обработки ресайза
+    def start_resize(self, event, side):
+        self.overlay_window._resize_data = {
+            'side': side,
+            'start_x': event.x_root,
+            'start_y': event.y_root,
+            'start_w': self.overlay_window.winfo_width(),
+            'start_h': self.overlay_window.winfo_height(),
+            'start_x_pos': self.overlay_window.winfo_x(),
+            'start_y_pos': self.overlay_window.winfo_y()
+        }
+
+    def on_resize(self, event, side):
+        if not hasattr(self.overlay_window, '_resize_data'):
+            return
+
+        data = self.overlay_window._resize_data
+        dx = event.x_root - data['start_x']
+        dy = event.y_root - data['start_y']
+
+        x = data['start_x_pos']
+        y = data['start_y_pos']
+        width = data['start_w']
+        height = data['start_h']
+
+        if 'n' in side:
+            height -= dy
+            y += dy
+            height = max(height, self.overlay_window.minsize()[1])
+            y = min(y, data['start_y_pos'] + data['start_h'] - self.overlay_window.minsize()[1])
+        if 's' in side:
+            height += dy
+            height = max(height, self.overlay_window.minsize()[1])
+        if 'w' in side:
+            width -= dx
+            x += dx
+            width = max(width, self.overlay_window.minsize()[0])
+            x = min(x, data['start_x_pos'] + data['start_w'] - self.overlay_window.minsize()[0])
+        if 'e' in side:
+            width += dx
+            width = max(width, self.overlay_window.minsize()[0])
+
+        # Корректируем позицию для угловых зон
+        if side in ('nw', 'ne', 'sw', 'se'):
+            if 'n' in side:
+                height = data['start_h'] - dy
+                y = data['start_y_pos'] + dy
+            if 's' in side:
+                height = data['start_h'] + dy
+            if 'w' in side:
+                width = data['start_w'] - dx
+                x = data['start_x_pos'] + dx
+            if 'e' in side:
+                width = data['start_w'] + dx
+
+        # Применяем новые размеры и позицию
+        self.overlay_window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def toggle_overlay(self):
+        if self.overlay_window and self.overlay_window.winfo_exists():
+            self.overlay_window.destroy()
+            self.overlay_window = None
+            self.overlay_btn.config(text="🖥️ Показать оверлей")
+        else:
+            self.create_overlay_window()
+            self.overlay_btn.config(text="🖥️ Скрыть оверлей")
+
+    # В методе create_overlay_window изменим создание окна:
+    def create_overlay_window(self):
+        self.overlay_window = tk.Toplevel(self.root)
+        self.overlay_window.wm_attributes("-topmost", True)
+        self.overlay_window.configure(bg='#2e2e2e')
+        self.overlay_window.overrideredirect(True)
+        self.overlay_window.geometry("400x300+100+100")
+        self.overlay_window.minsize(200, 150)
+
+        # Главный контейнер
+        main_frame = tk.Frame(self.overlay_window, bg='#2e2e2e')
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Заголовок окна
+        title_bar = tk.Frame(main_frame, bg='#454545', height=30)
+        title_bar.pack(fill=tk.X)
+
+        # Текст заголовка
+        title_label = tk.Label(title_bar, text="Рецепт поверх окон", bg='#454545', fg='white')
+        title_label.pack(side=tk.LEFT, padx=10)
+
+        # Кнопка закрытия
+        close_btn = tk.Button(title_bar, text="×", command=self.toggle_overlay,
+                            bg='#ff4444', fg='white', bd=0, padx=10)
+        close_btn.pack(side=tk.RIGHT)
+
+        # Контент оверлея
+        self.overlay_content = tk.Text(main_frame, wrap=tk.WORD, font=("Courier New", 10),
+                                     bg="#3c3c3c", fg="white", padx=10, pady=10)
+        self.overlay_content.pack(fill=tk.BOTH, expand=True)
+
+        # Зоны ресайза
+        self.setup_resize_zones(main_frame)
+
+        # Привязки для перемещения окна
+        title_bar.bind("<ButtonPress-1>", self.start_move)
+        title_bar.bind("<B1-Motion>", self.on_move)
+        title_label.bind("<ButtonPress-1>", self.start_move)
+        title_label.bind("<B1-Motion>", self.on_move)
+
+        # Обновляем контент оверлея
+        self.update_overlay_content()
+
+
+    def setup_resize_zones(self, parent):
+        resize_size = 2
+        bg_color = '#2e2e2e'  # Цвет фона родительского окна
+
+        # Создаем фреймы для ресайза с фоном как у родителя
+        resize_frames = {
+            'n': tk.Frame(parent, bg=bg_color, height=resize_size, cursor='sb_v_double_arrow',
+                          borderwidth=0, highlightthickness=0),
+            's': tk.Frame(parent, bg=bg_color, height=resize_size, cursor='sb_v_double_arrow',
+                          borderwidth=0, highlightthickness=0),
+            'e': tk.Frame(parent, bg=bg_color, width=resize_size, cursor='sb_h_double_arrow',
+                          borderwidth=0, highlightthickness=0),
+            'w': tk.Frame(parent, bg=bg_color, width=resize_size, cursor='sb_h_double_arrow',
+                          borderwidth=0, highlightthickness=0),
+            'nw': tk.Frame(parent, bg=bg_color, width=resize_size * 2, height=resize_size * 2,
+                           cursor='size_nw_se', borderwidth=0, highlightthickness=0),
+            'ne': tk.Frame(parent, bg=bg_color, width=resize_size * 2, height=resize_size * 2,
+                           cursor='size_ne_sw', borderwidth=0, highlightthickness=0),
+            'sw': tk.Frame(parent, bg=bg_color, width=resize_size * 2, height=resize_size * 2,
+                           cursor='size_ne_sw', borderwidth=0, highlightthickness=0),
+            'se': tk.Frame(parent, bg=bg_color, width=resize_size * 2, height=resize_size * 2,
+                           cursor='size_nw_se', borderwidth=0, highlightthickness=0)
+        }
+
+        # Размещаем фреймы
+        resize_frames['n'].place(relx=0, rely=0, relwidth=1)
+        resize_frames['s'].place(relx=0, rely=1, relwidth=1, anchor='sw')
+        resize_frames['e'].place(relx=1, rely=0, relheight=1, anchor='ne')
+        resize_frames['w'].place(relx=0, rely=0, relheight=1)
+
+        resize_frames['nw'].place(relx=0, rely=0)
+        resize_frames['ne'].place(relx=1, rely=0, anchor='ne')
+        resize_frames['sw'].place(relx=0, rely=1, anchor='sw')
+        resize_frames['se'].place(relx=1, rely=1, anchor='se')
+
+        # Привязываем обработчики
+        for side, frame in resize_frames.items():
+            frame.bind("<ButtonPress-1>", lambda e, s=side: self.start_resize(e, s))
+            frame.bind("<B1-Motion>", lambda e, s=side: self.on_resize(e, s))
+
+    def create_corner_grip(self, parent, corner, size):
+        cursors = {
+            "nw": "size_nw_se",
+            "ne": "size_ne_sw",
+            "sw": "size_ne_sw",
+            "se": "size_nw_se"
+        }
+        # Используем тот же цвет фона, что и у окна
+        frame = tk.Frame(parent, bg='#2e2e2e', width=size, height=size,
+                         cursor=cursors[corner], borderwidth=0, highlightthickness=0)
+
+        if corner == "nw":
+            frame.place(relx=0.0, rely=0.0, anchor=tk.NW)
+        elif corner == "ne":
+            frame.place(relx=1.0, rely=0.0, anchor=tk.NE)
+        elif corner == "sw":
+            frame.place(relx=0.0, rely=1.0, anchor=tk.SW)
+        elif corner == "se":
+            frame.place(relx=1.0, rely=1.0, anchor=tk.SE)
+
+        frame.bind("<Button-1>", lambda e, c=corner: self.start_resize(e, c))
+        frame.bind("<B1-Motion>", lambda e, c=corner: self.on_resize(e, c))
+
+    def start_move(self, event):
+        self.overlay_window._offset_x = event.x
+        self.overlay_window._offset_y = event.y
+
+    def on_move(self, event):
+        x = self.overlay_window.winfo_x() + (event.x - self.overlay_window._offset_x)
+        y = self.overlay_window.winfo_y() + (event.y - self.overlay_window._offset_y)
+        self.overlay_window.geometry(f"+{x}+{y}")
+
+
+    def update_overlay_content(self):
+        if not self.overlay_window or not self.overlay_content:
+            return
+
+        # Копируем контент из основного текстового поля
+        main_content = self.result_text.get("1.0", tk.END)
+        self.overlay_content.delete("1.0", tk.END)
+        self.overlay_content.insert(tk.END, main_content)
+
+        # Копируем форматирование (цвета)
+        for tag in self.result_text.tag_names():
+            self.overlay_content.tag_config(tag, foreground=self.result_text.tag_cget(tag, "foreground"))
+            ranges = self.result_text.tag_ranges(tag)
+            for i in range(0, len(ranges), 2):
+                start = ranges[i]
+                end = ranges[i+1]
+                self.overlay_content.tag_add(tag, start, end)
+
     def setup_directories(self):
         if not os.path.exists('recipes'):
             os.makedirs('recipes')
@@ -257,7 +463,7 @@ class ReagentCalculatorApp:
 
     def create_widgets(self):
         main_frame = tk.Frame(self.root, bg="#2e2e2e")
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
 
         left_panel = tk.Frame(main_frame, bg="#2e2e2e")
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=10)
@@ -265,6 +471,52 @@ class ReagentCalculatorApp:
         self.category_var = tk.StringVar()
         category_frame = tk.Frame(left_panel, bg="#2e2e2e")
         category_frame.pack(fill=tk.X, pady=5)
+
+        # Создадим фрейм для нижних кнопок
+        bottom_frame = tk.Frame(self.root, bg="#2e2e2e", height=40)
+        bottom_frame.pack(fill=tk.X, pady=(0, 10), padx=10)
+        bottom_frame.pack_propagate(False)
+
+        # Левая часть (аватар + текст)
+        left_bottom = tk.Frame(bottom_frame, bg="#2e2e2e")
+        left_bottom.pack(side=tk.LEFT)
+
+        # Добавим правую группу кнопок
+        right_buttons = tk.Frame(bottom_frame, bg="#2e2e2e")
+        right_buttons.pack(side=tk.RIGHT)
+
+        # Перенесём кнопку оверлея в нижний фрейм слева
+        self.overlay_btn = tk.Button(
+            right_buttons,
+            text="🖥️ Показать оверлей",
+            command=self.toggle_overlay,
+            bg="#454545",
+            fg="white",
+            font=("Arial", 10)
+        )
+        self.overlay_btn.pack(side=tk.LEFT, padx=2)
+
+        # Кнопка GitHub
+        github_btn = tk.Button(
+            right_buttons,
+            text="GitHub",
+            command=lambda: webbrowser.open("https://github.com/R-R0S/ss14-calc"),
+            bg="#333333",
+            fg="white",
+            font=("Arial", 10)
+        )
+        github_btn.pack(side=tk.LEFT, padx=5)
+
+        # Декоративная кнопка
+        decorative_btn = tk.Button(
+            right_buttons,
+            text="⚙️",
+            bg="#333333",
+            fg="white",
+            font=("Arial", 10),
+            state=tk.DISABLED
+        )
+        decorative_btn.pack(side=tk.LEFT, padx=5)
 
         tk.Label(category_frame,
                 text="Выберите категорию:",
@@ -339,23 +591,28 @@ class ReagentCalculatorApp:
         )
         self.update_btn.pack(side=tk.RIGHT, padx=5)
 
-        self.avatar_container = tk.Frame(left_panel,
-                                         bg="#2e2e2e",
-                                         height=300)
-        self.avatar_container.pack(fill=tk.X, pady=5)
-        self.avatar_container.pack_propagate(False)
+        self.avatar_container = tk.Frame(
+            left_panel,
+            bg="#2e2e2e",
+        )
+        self.avatar_container.pack(fill=tk.BOTH, expand=True, pady=5)
 
         if hasattr(self, 'avatar_image') and self.avatar_image:
-            self.avatar_label = tk.Label(self.avatar_container,
-                                         image=self.avatar_image,
-                                         bg="#2e2e2e")
-            self.avatar_label.pack(fill=tk.BOTH, expand=True)
+            self.avatar_label = tk.Label(
+                self.avatar_container,
+                image=self.avatar_image,
+                bg="#2e2e2e"
+            )
+            # Используем place для автоматического скрытия при нехватке места
+            self.avatar_label.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
 
             def safe_resize(event):
-                w = self.avatar_container.winfo_width() + 25
-                h = self.avatar_container.winfo_height() + 25
-                size = min(w, h)
+                w = event.width
+                h = event.height
+                if w <= 0 or h <= 0:
+                    return
 
+                size = min(w, h)
                 if size != self.current_avatar_size:
                     self.current_avatar_size = size
                     if getattr(sys, 'frozen', False):
@@ -370,28 +627,30 @@ class ReagentCalculatorApp:
             self.current_avatar_size = 0
             self.avatar_container.bind("<Configure>", safe_resize)
 
-        discord_frame = tk.Frame(left_panel,
-                                 bg="#2e2e2e",
-                                 height=40)
-        discord_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
-        discord_frame.pack_propagate(False)
+        # Discord и текст теперь в left_bottom
+        discord_frame = tk.Frame(left_bottom, bg="#2e2e2e")
+        discord_frame.pack(side=tk.LEFT, padx=5)
 
         if hasattr(self, 'discord_image') and self.discord_image:
-            discord_btn = tk.Label(discord_frame,
-                                   image=self.discord_image,
-                                   bg="#2e2e2e",
-                                   cursor="hand2")
-            discord_btn.pack(side=tk.LEFT, padx=5)
+            discord_btn = tk.Label(
+                discord_frame,
+                image=self.discord_image,
+                bg="#2e2e2e",
+                cursor="hand2"
+            )
+            discord_btn.pack(side=tk.LEFT)
             discord_btn.bind("<Button-1>", lambda e: webbrowser.open("https://discord.com/users/317692089355862016"))
 
-        tk.Label(discord_frame,
-                 text=f"©FelinidsPower,\n «Надежда» - 3025г.",
-                 fg="white",
-                 bg="#2e2e2e",
-                 font=("Arial Black", 9)).pack(side=tk.LEFT, padx=5)
+        tk.Label(
+            discord_frame,
+            text=f"©FelinidsPower,\n «Надежда» - 3025г.",
+            fg="white",
+            bg="#2e2e2e",
+            font=("Arial Black", 9)
+        ).pack(side=tk.LEFT, padx=5)
 
         right_panel = tk.Frame(main_frame, bg="#2e2e2e")
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10)
+        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
 
         self.result_text = tk.Text(
             right_panel,
@@ -478,6 +737,9 @@ class ReagentCalculatorApp:
             text_widget=self.result_text
         )
 
+        self.update_overlay_content()  # Обновляем оверлей после расчета
+
+
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
                           target_product=None, include_header=True,
                           visited=None, text_widget=None):
@@ -531,7 +793,7 @@ class ReagentCalculatorApp:
                 header += " [МГНОВЕННАЯ РЕАКЦИЯ]"
 
             if "minTemp" in recipe:
-                header += f" (мин. температура: {recipe['minTemp']}K)"
+                header += f"(мин. темп:{recipe['minTemp']}K)"
 
             header += ":" if reactants else ""
             text_widget.insert(tk.END, header + "\n", current_color_tag)
@@ -546,7 +808,7 @@ class ReagentCalculatorApp:
             if reactant in self.recipe_dict and not is_catalyst:
                 component_recipe = self.recipe_dict[reactant]
                 if "minTemp" in component_recipe:
-                    line += f" [р] (мин. температура: {component_recipe['minTemp']}K)"
+                    line += f" [р](мин. темп:{component_recipe['minTemp']}K)"
                 else:
                     line += " [р]"
             if is_catalyst:
@@ -573,6 +835,11 @@ class ReagentCalculatorApp:
                 translated_product = self.translations.get(product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
+            if products_text:
+                text_widget.insert(tk.END,
+                                   f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n", current_color_tag)
+
+
         if is_centrifuge:
             products_text = []
             for product, amount in products.items():
@@ -582,7 +849,7 @@ class ReagentCalculatorApp:
 
             if products_text:
                 text_widget.insert(tk.END,
-                                   f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n", current_color_tag)
+                                   f"{'  ' * (depth + 1)}Продукты центрифуги: {' + '.join(products_text)}\n", current_color_tag)
 
         elif is_instant:
             effects_text = []
