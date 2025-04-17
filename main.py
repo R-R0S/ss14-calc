@@ -1,6 +1,7 @@
-#v0.32103
+#v0.32104
 import yaml
 import os
+import re
 import sys
 import requests
 import threading
@@ -15,7 +16,7 @@ import tkinter as tk
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("SS14 Химический калькулятор by i_love_Megumin v0.32103")
+        self.root.title("SS14 Химический калькулятор by i_love_Megumin v0.32104")
         if getattr(sys, 'frozen', False):
             icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
         else:
@@ -28,152 +29,35 @@ class ReagentCalculatorApp:
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
             'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml',
-            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml'
+            'drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/Recipes/Reactions/drinks.yml',
+            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml',
+            'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/SS220/Recipes/Reactions/drinks.yml'
         }
+        self.translation_files = {
+            'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/medicine.ftl',
+            'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/chemicals.ftl',
+            'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
+            'biological': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/biological.ftl',
+            'botany': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/botany.ftl',
+            'cleaning': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/cleaning.ftl',
+            'elements': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/elements.ftl',
+            'fun': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/fun.ftl',
+            'gases': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/gases.ftl',
+            'narcotics': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/narcotics.ftl',
+            'toxins': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/toxins.ftl',
+            'alcohol': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
+            'drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
+            'juice': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
+            'soda': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
+            'ingredients': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
+            'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/drinks.ftl',
+            'condiments': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
+            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/medicine.ftl',
+        }
+
 
         self.recipes = []
         self.recipe_dict = {}
-        self.translations = {
-            "medicine": "Медикоменты",
-            "Dylovene": "Диловен",
-            "TableSalt": "Столовая Соль",
-            "SpaceDrugs": "Космический мираж",
-            "Lexorin": "Лексорин",
-            "Mannitol": "Маннитол",
-            "Vestine": "Вестин",
-            "Lipozine": "Липозин",
-            "Mercury": "Ртуть",
-            "Impedrezene": "Импедрезен",
-            "HeartbreakerToxin": "Токсин Хартбрейкер",
-            "MindbreakerToxin": "Токсин Майндбрейкер",
-            "ZombieBlood": "Кровь зомби",
-            "AmbuzolPlus": "Амбузол Плюс",
-            "Ambuzol": "Амбузол",
-            "Blood": "Кровь",
-            "Phalanximine": "Фалангимин",
-            "Fersilicite": "Силицид железа",
-            "Leporazine": "Лепоразин",
-            "Copper": "Медь",
-            "Silicon": "Кремний",
-            "Ammonia": "Аммиак",
-            "TranexamicAcid": "Транексамовая кислота",
-            "Nitrogen": "Азот",
-            "SulfuricAcid": "Серная кислота",
-            "Potassium": "Калий",
-            "Ethylredoxrazine": "Этилредоксразин",
-            "Oxygen": "Кислород",
-            "Iron": "Железо",
-            "Radium": "Радий",
-            "Carbon": "Углерод",
-            "Chlorine": "Хлор",
-            "Bruizine": "Бруизин",
-            "Phenol": "Фенол",
-            "Lacerinol": "Лацеринол",
-            "BicarLacerinol": "BicarLacerinol",
-            "BicarPuncturase": "BicarPuncturase",
-            "BicarBruizine": "BicarBruizine",
-            "Puncturase": "Пунктураз",
-            "Acetone": "Ацетон",
-            "Hydroxide": "Гидроксид",
-            "Cryptobiolin": "Криптобиолин",
-            "Sugar": "Сахар",
-            "Saline": "физ. раствор",
-            "Ipecac": "Ипекак",
-            "Epinephrine": "Эпинефрин",
-            "Benzene": "Бензол",
-            "UnstableMutagen": "Нестабильный мутаген",
-            "Bicaridine": "Бикаридин",
-            "Cryoxadone": "Криоксадон",
-            "Doxarubixadone": "Доксарубиксадон",
-            "Inaprovaline": "Инапровалин",
-            "Water": "Вода",
-            "Arithrazine": "Аритразин",
-            "Kelotane": "Келотан",
-            "Phosphorus": "Фосфор",
-            "Hydrogen": "Водород",
-            "Plasma": "Плазма",
-            "Dexalin": "Дексалин",
-            "Dermaline": "Дермалин",
-            "Hyronalin": "Хироналин",
-            "DexalinPlus": "Дексалин Плюс",
-            "Ultravasculine": "Ультраваскулин",
-            "Ethanol": "Этанол",
-            "Synaptizine": "Синаптизин",
-            "Histamine": "Гистамин",
-            "Lithium": "Литий",
-            "Tricordrazine": "Трикордразин",
-            "Oculine": "Окулин",
-            "Siderlac": "Сидерлак",
-            "Aloe": "Алоэ",
-            "Stellibinin": "Стеллибинин",
-            "Cognizine": "Когнизин",
-            "CarpoToxin": "Карпотоксин",
-            "Sigynate": "Сигинат",
-            "SodiumCarbonate": "Карбонат натрия",
-            "SodiumHydroxide": "Гидроксид натрия",
-            "Diphenhydramine": "Дифенгидрамин",
-            "Diethylamine": "Диэтиламин",
-            "Oil": "Масло",
-            "Pyrazine": "Пиразин",
-            "Insuzine": "Инсузин",
-            "Opporozidone": "Оппорозидон",
-            "Necrosol": "Некрозол",
-            "Omnizine": "Омнизин",
-            "Psicodine": "Псикодин",
-            "Lipolicide": "Липолицид",
-            "Ephedrine": "Эфедрин",
-            "Happiness": "Счастье",
-            "Laughter": "Смех",
-            "PotassiumIodide": "Иодид калия",
-            "Haloperidol": "Галоперидол",
-            "Aloxadone": "Алоксадон",
-            "CelluloseBreakdown": "Расщепление Целлюлозы",
-            "Cellulose": "Целлюлозные волокна",
-            "WeldingFuel": "Сварочное топливо",
-            "FoamingAgent": "Пенообразующий элемент",
-            "PolytrinicAcid": "Политриновая кислота",
-            "FluorosulfuricAcid": "Фторсерная кислота",
-            "Fluorine": "Фтор",
-            "PotassiumExplosion": "Взрыв калия",
-            "Smoke": "Дым или пенна",
-            "Fluorosurfactant": "Фторсурфактант",
-            "IronMetalFoam": "Металлическая пена",
-            "AluminiumMetalFoam": "Алюминевая пена",
-            "Aluminium": "Алюминий",
-            "UraniumEmpExplosion": "Взрыв урана",
-            "Uranium": "Уран",
-            "Flash": "Вспышка",
-            "TableSaltBreakdown": "Расщепление соли",
-            "Thermite": "Термит",
-            "Desoxyephedrine": "Дезоксиэфедрин",
-            "Iodine": "Йод",
-            "Stimulants": "Стимулятор",
-            "SpaceGlue": "Космический клей",
-            "MuteToxin": "Токсин Немоты",
-            "ChloralHydrate": "Хлоралгидрат",
-            "Pax": "Пакс",
-            "Charcoal": "Уголь",
-            "Ash": "Пепел",
-            "NorepinephricAcid": "Норэпинефриновая кислота",
-            "Ethyloxyephedrine": "Этилоксиэфедрин",
-            "Diphenylmethylamine": "Дифенилметиламин",
-            "Coffee": "Кофе",
-            "SodiumPolyacrylate": "Полиакрилат натрия",
-            "Nocturine": "Ноктюрин",
-            "Tazinide": "Тазинид",
-            "Licoxide": "Ликоксид",
-            "Foam": "Пена",
-            "Sulfur": "Сера",
-            "Sodium": "Натрий",
-            "ChlorineTrifluoride": "Трифторид хлора",
-            "Napalm": "Напалм",
-            "Phlogiston": "Флогистон",
-            "WeldingFuelBreakdown": "Разложение топлива",
-            "Fomepizole": "Фомепизол",
-            "Harai": "Харай",
-            "Cerebrin": "Церебрин",
-        }
-
         self.setup_directories()
         self.load_recipes()
         self.load_images()
@@ -181,7 +65,32 @@ class ReagentCalculatorApp:
 
         self.overlay_window = None
         self.overlay_content = None
+        self.load_translations()
 
+    def load_translations(self):
+        self.translations = {}
+        for filename in os.listdir('translations'):
+            if filename.endswith('.ftl'):
+                try:
+                    with open(os.path.join('translations', filename), 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        entries = re.findall(
+                            r'^reagent-name-([\w-]+)\s*=\s*(.+)$',
+                            content,
+                            re.MULTILINE
+                        )
+                        for eng_name, translation in entries:
+                            normalized_id = eng_name.replace('-', '').lower()
+
+                            translation = translation.strip().strip('"')
+                            if translation:
+                                translation = translation[0].upper() + translation[1:]
+
+                            self.translations[normalized_id] = translation
+
+                    print(f"Загружено переводов из {filename}: {len(entries)}")
+                except Exception as e:
+                    print(f"Ошибка загрузки перевода {filename}: {str(e)}")
 
     def start_resize(self, event, side):
         self.overlay_window._resize_data = {
@@ -378,6 +287,8 @@ class ReagentCalculatorApp:
     def setup_directories(self):
         if not os.path.exists('recipes'):
             os.makedirs('recipes')
+        if not os.path.exists('translations'):
+            os.makedirs('translations')
 
     def load_images(self):
         import sys
@@ -654,6 +565,8 @@ class ReagentCalculatorApp:
             self.result_text.tag_config(f"depth{i}", foreground=color)
 
     def update_recipes_list(self, event=None):
+        order = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяabcdefghijklmnopqrstuvwxyz"
+        mapping = str.maketrans({ch: chr(1000 + i) for i, ch in enumerate(order)})
         selected_category = self.category_var.get()
         if not selected_category:
             return
@@ -663,30 +576,42 @@ class ReagentCalculatorApp:
         translated_names = []
         self.recipe_map = {}
         for recipe in filtered_recipes:
-            translated = self.translations.get(recipe['id'], recipe['id'])
+            normalized_id = recipe['id'].lower().replace(' ', '')
+            translated = self.translations.get(normalized_id, recipe['id'])
+            #print(self.translations.get('berryсompote'))  И какой долбаёб русскую с вместо английской c въебал в yml??
             translated_names.append(translated)
             self.recipe_map[translated] = recipe['id']
 
+        translated_names.sort(key=lambda s: s.lower().translate(mapping))
         self.recipe_combobox['values'] = translated_names
         if translated_names:
             self.recipe_var.set(translated_names[0])
         else:
             self.recipe_var.set('')
-            messagebox.showinfo("Информация", "В выбранной категории нет рецептов")
 
     def update_data_async(self):
         threading.Thread(target=self.update_data).start()
 
     def update_data(self):
         try:
+            self.setup_directories()
+
             for category, url in self.recipe_categories.items():
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
                         f.write(response.text)
 
+            for name, url in self.translation_files.items():
+                response = requests.get(url)
+                if response.status_code == 200:
+                    with open(f'translations/{name}.ftl', 'w', encoding='utf-8') as f:
+                        f.write(response.text)
+
+            self.load_translations()
             self.load_recipes()
             self.update_recipes_list()
+
             messagebox.showinfo("Обновление", "Данные успешно обновлены!")
 
         except Exception as e:
@@ -720,7 +645,7 @@ class ReagentCalculatorApp:
             text_widget=self.result_text
         )
 
-        self.update_overlay_content()  # Обновляем оверлей после расчета
+        self.update_overlay_content()
 
 
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
@@ -746,7 +671,9 @@ class ReagentCalculatorApp:
         mixer_categories = recipe.get("requiredMixerCategories", [])
 
         is_electrolysis = 'Electrolysis' in mixer_categories
-        is_centrifuge = 'Centrifuge' in mixer_categories  # Новая проверка
+        is_centrifuge = 'Centrifuge' in mixer_categories
+        is_Shake = 'Shake' in mixer_categories
+        is_Stir = 'Stir' in mixer_categories
         is_instant = len(effects) > 0 and len(products) == 0
 
         target_product = target_product or next(iter(products.keys()), None) if products else None
@@ -764,7 +691,8 @@ class ReagentCalculatorApp:
         elif is_instant:
             multiplier = amount_needed
 
-        translated_name = self.translations.get(recipe_id, recipe_id)
+        normalized_id = recipe_id.lower().replace(' ', '')
+        translated_name = self.translations.get(normalized_id, recipe_id)
         if include_header:
             header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_name}"
 
@@ -774,6 +702,10 @@ class ReagentCalculatorApp:
                 header += " [ЦЕНТРИФУГА]"
             elif is_instant:
                 header += " [МГНОВЕННАЯ РЕАКЦИЯ]"
+            elif is_Shake:
+                header += " [ВЗБОЛТАТЬ]"
+            elif is_Stir:
+                header += " [ПЕРЕМЕШАТЬ]"
 
             if "minTemp" in recipe:
                 header += f"(мин. темп:{recipe['minTemp']}K)"
@@ -785,7 +717,8 @@ class ReagentCalculatorApp:
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
             final_amount = required_amount * (multiplier if not is_catalyst else 1)
-            translated_name = self.translations.get(reactant, reactant)
+            normalized_reactant = reactant.lower().replace(' ', '').replace('-', '')
+            translated_name = self.translations.get(normalized_reactant, reactant)
 
             line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {translated_name}"
             if reactant in self.recipe_dict and not is_catalyst:
@@ -815,7 +748,8 @@ class ReagentCalculatorApp:
             products_text = []
             for product, amount in products.items():
                 product_amount = amount * multiplier
-                translated_product = self.translations.get(product, product)
+                normalized_product = product.lower().replace(' ', '').replace('-', '')
+                translated_product = self.translations.get(normalized_product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
             if products_text:
@@ -827,7 +761,8 @@ class ReagentCalculatorApp:
             products_text = []
             for product, amount in products.items():
                 product_amount = amount * multiplier
-                translated_product = self.translations.get(product, product)
+                normalized_product = product.lower().replace(' ', '').replace('-', '')
+                translated_product = self.translations.get(normalized_product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
             if products_text:
