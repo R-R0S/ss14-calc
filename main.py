@@ -1,7 +1,8 @@
-#v0.32103
 import yaml
 import os
+import re
 import sys
+import random
 import requests
 import threading
 import webbrowser
@@ -15,7 +16,35 @@ import tkinter as tk
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("SS14 Химический калькулятор by i_love_Megumin v0.32103")
+        self.current_version = "0.33104"
+        self.update_messages = [
+            "Доступно обновление на GitHub! ⬆️",
+            "Обновись! Новые фичи ждут! 🚀",
+            "Обновления не сделают тебе больно 😇",
+            "Твоя версия устарела! 🕒",
+            "Новая версия уже вышла! 🎉",
+            "Не пропусти важные изменения! 🔔",
+            "Новая версия — как экзотермическая реакция! 🔥",
+            "Обнови свой реактив! 🧪",
+            "Требуется катализатор обновления! ⚗️",
+            "Не будь инертным газом! 💨",
+            "Пофикшены баги, добавлены котики 🐈",
+            "git pull origin main! 🌿",
+            "Собрано с любовью и кофеином ☕",
+            "Нет багов — нет проблем 🐞",
+            "Выбери красную таблетку обновлений 🔴",
+            "Этот апдейт одобрил Рик Санчеz! 🔬",
+            "sudo apt-get upgrade ⚙️",
+            "404 - Версия не найдена ❌",
+            "Доктор, я обновил TARDIS! 🕰️",
+            "Теперь с поддержкой ⑨⑨⑨⑨⑨⑨⑨⑨⑨⑨ 🦋",
+            "Пора на орбитальный апдейт! 🛰️",
+            "Чё каво, апдейт есть? 👀",
+            "Это не баг, а фича! 🪲",
+            "Аманда, у тебя фрезон убежал! 🥶",
+            "А если серьёзно, я скучаю по Эмгыр де Шнайдер 🐱"
+        ]
+        self.root.title(f"SS14 Химический калькулятор by i_love_Megumin v{self.current_version}")
         if getattr(sys, 'frozen', False):
             icon_path = os.path.join(sys._MEIPASS, 'icon.ico')
         else:
@@ -28,160 +57,72 @@ class ReagentCalculatorApp:
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
             'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml',
-            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml'
+            'drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/Recipes/Reactions/drinks.yml',
+            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml',
+            'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/SS220/Recipes/Reactions/drinks.yml'
         }
+        self.translation_files = {
+            'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/medicine.ftl',
+            'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/chemicals.ftl',
+            'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
+            'biological': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/biological.ftl',
+            'botany': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/botany.ftl',
+            'cleaning': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/cleaning.ftl',
+            'elements': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/elements.ftl',
+            'fun': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/fun.ftl',
+            'gases': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/gases.ftl',
+            'narcotics': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/narcotics.ftl',
+            'toxins': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/toxins.ftl',
+            'alcohol': 'https://raw.githubusercontent.com/space-syndicate/space-station-14/c5fffb0b73c7f5c11e41b3996a41a2722c978ab4/Resources/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
+            'drinks': 'https://raw.githubusercontent.com/space-syndicate/space-station-14/c5fffb0b73c7f5c11e41b3996a41a2722c978ab4/Resources/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
+            'juice': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
+            'soda': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
+            'ingredients': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
+            'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/drinks.ftl',
+            'condiments': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
+            'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/medicine.ftl',
+        }
+
 
         self.recipes = []
         self.recipe_dict = {}
-        self.translations = {
-            "medicine": "Медикоменты",
-            "Dylovene": "Диловен",
-            "TableSalt": "Столовая Соль",
-            "SpaceDrugs": "Космический мираж",
-            "Lexorin": "Лексорин",
-            "Mannitol": "Маннитол",
-            "Vestine": "Вестин",
-            "Lipozine": "Липозин",
-            "Mercury": "Ртуть",
-            "Impedrezene": "Импедрезен",
-            "HeartbreakerToxin": "Токсин Хартбрейкер",
-            "MindbreakerToxin": "Токсин Майндбрейкер",
-            "ZombieBlood": "Кровь зомби",
-            "AmbuzolPlus": "Амбузол Плюс",
-            "Ambuzol": "Амбузол",
-            "Blood": "Кровь",
-            "Phalanximine": "Фалангимин",
-            "Fersilicite": "Силицид железа",
-            "Leporazine": "Лепоразин",
-            "Copper": "Медь",
-            "Silicon": "Кремний",
-            "Ammonia": "Аммиак",
-            "TranexamicAcid": "Транексамовая кислота",
-            "Nitrogen": "Азот",
-            "SulfuricAcid": "Серная кислота",
-            "Potassium": "Калий",
-            "Ethylredoxrazine": "Этилредоксразин",
-            "Oxygen": "Кислород",
-            "Iron": "Железо",
-            "Radium": "Радий",
-            "Carbon": "Углерод",
-            "Chlorine": "Хлор",
-            "Bruizine": "Бруизин",
-            "Phenol": "Фенол",
-            "Lacerinol": "Лацеринол",
-            "BicarLacerinol": "BicarLacerinol",
-            "BicarPuncturase": "BicarPuncturase",
-            "BicarBruizine": "BicarBruizine",
-            "Puncturase": "Пунктураз",
-            "Acetone": "Ацетон",
-            "Hydroxide": "Гидроксид",
-            "Cryptobiolin": "Криптобиолин",
-            "Sugar": "Сахар",
-            "Saline": "физ. раствор",
-            "Ipecac": "Ипекак",
-            "Epinephrine": "Эпинефрин",
-            "Benzene": "Бензол",
-            "UnstableMutagen": "Нестабильный мутаген",
-            "Bicaridine": "Бикаридин",
-            "Cryoxadone": "Криоксадон",
-            "Doxarubixadone": "Доксарубиксадон",
-            "Inaprovaline": "Инапровалин",
-            "Water": "Вода",
-            "Arithrazine": "Аритразин",
-            "Kelotane": "Келотан",
-            "Phosphorus": "Фосфор",
-            "Hydrogen": "Водород",
-            "Plasma": "Плазма",
-            "Dexalin": "Дексалин",
-            "Dermaline": "Дермалин",
-            "Hyronalin": "Хироналин",
-            "DexalinPlus": "Дексалин Плюс",
-            "Ultravasculine": "Ультраваскулин",
-            "Ethanol": "Этанол",
-            "Synaptizine": "Синаптизин",
-            "Histamine": "Гистамин",
-            "Lithium": "Литий",
-            "Tricordrazine": "Трикордразин",
-            "Oculine": "Окулин",
-            "Siderlac": "Сидерлак",
-            "Aloe": "Алоэ",
-            "Stellibinin": "Стеллибинин",
-            "Cognizine": "Когнизин",
-            "CarpoToxin": "Карпотоксин",
-            "Sigynate": "Сигинат",
-            "SodiumCarbonate": "Карбонат натрия",
-            "SodiumHydroxide": "Гидроксид натрия",
-            "Diphenhydramine": "Дифенгидрамин",
-            "Diethylamine": "Диэтиламин",
-            "Oil": "Масло",
-            "Pyrazine": "Пиразин",
-            "Insuzine": "Инсузин",
-            "Opporozidone": "Оппорозидон",
-            "Necrosol": "Некрозол",
-            "Omnizine": "Омнизин",
-            "Psicodine": "Псикодин",
-            "Lipolicide": "Липолицид",
-            "Ephedrine": "Эфедрин",
-            "Happiness": "Счастье",
-            "Laughter": "Смех",
-            "PotassiumIodide": "Иодид калия",
-            "Haloperidol": "Галоперидол",
-            "Aloxadone": "Алоксадон",
-            "CelluloseBreakdown": "Расщепление Целлюлозы",
-            "Cellulose": "Целлюлозные волокна",
-            "WeldingFuel": "Сварочное топливо",
-            "FoamingAgent": "Пенообразующий элемент",
-            "PolytrinicAcid": "Политриновая кислота",
-            "FluorosulfuricAcid": "Фторсерная кислота",
-            "Fluorine": "Фтор",
-            "PotassiumExplosion": "Взрыв калия",
-            "Smoke": "Дым или пенна",
-            "Fluorosurfactant": "Фторсурфактант",
-            "IronMetalFoam": "Металлическая пена",
-            "AluminiumMetalFoam": "Алюминевая пена",
-            "Aluminium": "Алюминий",
-            "UraniumEmpExplosion": "Взрыв урана",
-            "Uranium": "Уран",
-            "Flash": "Вспышка",
-            "TableSaltBreakdown": "Расщепление соли",
-            "Thermite": "Термит",
-            "Desoxyephedrine": "Дезоксиэфедрин",
-            "Iodine": "Йод",
-            "Stimulants": "Стимулятор",
-            "SpaceGlue": "Космический клей",
-            "MuteToxin": "Токсин Немоты",
-            "ChloralHydrate": "Хлоралгидрат",
-            "Pax": "Пакс",
-            "Charcoal": "Уголь",
-            "Ash": "Пепел",
-            "NorepinephricAcid": "Норэпинефриновая кислота",
-            "Ethyloxyephedrine": "Этилоксиэфедрин",
-            "Diphenylmethylamine": "Дифенилметиламин",
-            "Coffee": "Кофе",
-            "SodiumPolyacrylate": "Полиакрилат натрия",
-            "Nocturine": "Ноктюрин",
-            "Tazinide": "Тазинид",
-            "Licoxide": "Ликоксид",
-            "Foam": "Пена",
-            "Sulfur": "Сера",
-            "Sodium": "Натрий",
-            "ChlorineTrifluoride": "Трифторид хлора",
-            "Napalm": "Напалм",
-            "Phlogiston": "Флогистон",
-            "WeldingFuelBreakdown": "Разложение топлива",
-            "Fomepizole": "Фомепизол",
-            "Harai": "Харай",
-            "Cerebrin": "Церебрин",
-        }
-
-        self.setup_directories()
-        self.load_recipes()
         self.load_images()
         self.create_widgets()
+        self.setup_directories()
+        self.load_translations()
+        self.load_recipes()
 
         self.overlay_window = None
         self.overlay_content = None
+        self.progress_visible = None
 
+        self.check_for_updates_async()
+        # self.debug_add_update_notification()
+
+    def load_translations(self):
+        self.translations = {}
+        for filename in os.listdir('translations'):
+            if filename.endswith('.ftl'):
+                try:
+                    with open(os.path.join('translations', filename), 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        entries = re.findall(
+                            r'^reagent-name-([\w-]+)\s*=\s*(.+)$',
+                            content,
+                            re.MULTILINE
+                        )
+                        for eng_name, translation in entries:
+                            normalized_id = eng_name.replace('-', '').lower()
+
+                            translation = translation.strip().strip('"')
+                            if translation:
+                                translation = translation[0].upper() + translation[1:]
+
+                            self.translations[normalized_id] = translation
+
+                    print(f"Загружено переводов из {filename}: {len(entries)}")
+                except Exception as e:
+                    print(f"Ошибка загрузки перевода {filename}: {str(e)}")
 
     def start_resize(self, event, side):
         self.overlay_window._resize_data = {
@@ -375,9 +316,16 @@ class ReagentCalculatorApp:
                 end = ranges[i+1]
                 self.overlay_content.tag_add(tag, start, end)
 
-    def setup_directories(self):
+    def setup_directories(self, upd = False):
+        ood = False
         if not os.path.exists('recipes'):
             os.makedirs('recipes')
+            ood = True
+        if not os.path.exists('translations'):
+            os.makedirs('translations')
+            ood = True
+        if ood and not upd:
+            self.update_data_async()
 
     def load_images(self):
         import sys
@@ -413,6 +361,9 @@ class ReagentCalculatorApp:
                         if recipes:
                             category = filename.replace('.yml', '')
                             for recipe in self.filter_recipes(recipes):
+                                recipe_id = recipe.get('id', '')
+                                if recipe_id.endswith("Drink"):
+                                    recipe['id'] = recipe_id[:-len("Drink")]
                                 recipe['category'] = category
                                 self.recipes.append(recipe)
                 except Exception as e:
@@ -646,6 +597,20 @@ class ReagentCalculatorApp:
         )
         self.result_text.pack(fill=tk.BOTH, expand=True)
 
+        self.progress_frame = tk.Frame(right_panel, bg="#2e2e2e", height=30)
+
+        self.progress_bar = ttk.Progressbar(self.progress_frame, mode='determinate')
+        self.progress_bar.pack(fill=tk.X, padx=5, pady=2)
+
+        self.status_label = tk.Label(
+            self.progress_frame,
+            text="",
+            bg="#2e2e2e",
+            fg="white",
+            font=("Arial", 9)
+        )
+        self.status_label.pack(fill=tk.X, padx=5)
+
         self.depth_colors = [
             "#FFFFFF", "#4EC9B0", "#569CD6",
             "#B5CEA8", "#CE9178", "#C586C0"
@@ -654,6 +619,8 @@ class ReagentCalculatorApp:
             self.result_text.tag_config(f"depth{i}", foreground=color)
 
     def update_recipes_list(self, event=None):
+        order = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяabcdefghijklmnopqrstuvwxyz"
+        mapping = str.maketrans({ch: chr(1000 + i) for i, ch in enumerate(order)})
         selected_category = self.category_var.get()
         if not selected_category:
             return
@@ -663,34 +630,71 @@ class ReagentCalculatorApp:
         translated_names = []
         self.recipe_map = {}
         for recipe in filtered_recipes:
-            translated = self.translations.get(recipe['id'], recipe['id'])
+            normalized_id = recipe['id'].lower().replace(' ', '')
+            translated = self.translations.get(normalized_id, recipe['id'])
             translated_names.append(translated)
             self.recipe_map[translated] = recipe['id']
 
+        translated_names.sort(key=lambda s: s.lower().translate(mapping))
         self.recipe_combobox['values'] = translated_names
         if translated_names:
             self.recipe_var.set(translated_names[0])
         else:
             self.recipe_var.set('')
-            messagebox.showinfo("Информация", "В выбранной категории нет рецептов")
 
     def update_data_async(self):
+        self.update_btn.config(state=tk.DISABLED)
+        self.progress_frame.pack(fill=tk.X, pady=5)
+        self.progress_bar['value'] = 0
+        self.status_label.config(text="Подготовка к обновлению...")
         threading.Thread(target=self.update_data).start()
+
+    def hide_progress(self):
+        self.progress_frame.pack_forget()
+        self.progress_bar['value'] = 0
+        self.status_label.config(text="")
 
     def update_data(self):
         try:
-            for category, url in self.recipe_categories.items():
+            total_files = len(self.recipe_categories) + len(self.translation_files)
+            self.setup_directories(upd=True)
+
+            self.root.after(0, self.progress_bar.configure, {'maximum': total_files})
+            self.root.after(0, self.status_label.config, {'text': "Загрузка рецептов..."})
+
+            for i, (category, url) in enumerate(self.recipe_categories.items()):
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
                         f.write(response.text)
 
+                self.root.after(0, self.progress_bar.step, 1)
+                self.root.after(0, self.status_label.config,
+                                {'text': f"Загружено рецептов: {i + 1}/{len(self.recipe_categories)}"})
+
+            self.root.after(0, self.status_label.config, {'text': "Загрузка переводов..."})
+            for i, (name, url) in enumerate(self.translation_files.items()):
+                response = requests.get(url)
+                if response.status_code == 200:
+                    with open(f'translations/{name}.ftl', 'w', encoding='utf-8') as f:
+                        f.write(response.text)
+                self.root.after(0, self.progress_bar.step, 1)
+                self.root.after(0, self.status_label.config,
+                                {'text': f"Загружено переводов: {i + 1}/{len(self.translation_files)}"})
+
+            self.root.after(0, self.status_label.config, {'text': "Обновление завершено!"})
+            self.root.after(2000, self.hide_progress)
+            self.root.after(0, messagebox.showinfo, "Обновление", "Данные успешно обновлены!")
+            self.load_translations()
             self.load_recipes()
             self.update_recipes_list()
-            messagebox.showinfo("Обновление", "Данные успешно обновлены!")
 
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при обновлении: {str(e)}")
+            self.root.after(0, self.status_label.config, {'text': f"Ошибка: {str(e)}"})
+            self.root.after(0, messagebox.showerror, "Ошибка", f"Ошибка при обновлении: {str(e)}")
+            self.root.after(5000, self.hide_progress)
+        finally:
+            self.root.after(0, self.update_btn.config, {'state': tk.NORMAL})
 
     def calculate_reactants(self):
         selected_translation = self.recipe_var.get()
@@ -720,7 +724,7 @@ class ReagentCalculatorApp:
             text_widget=self.result_text
         )
 
-        self.update_overlay_content()  # Обновляем оверлей после расчета
+        self.update_overlay_content()
 
 
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
@@ -746,7 +750,9 @@ class ReagentCalculatorApp:
         mixer_categories = recipe.get("requiredMixerCategories", [])
 
         is_electrolysis = 'Electrolysis' in mixer_categories
-        is_centrifuge = 'Centrifuge' in mixer_categories  # Новая проверка
+        is_centrifuge = 'Centrifuge' in mixer_categories
+        is_Shake = 'Shake' in mixer_categories
+        is_Stir = 'Stir' in mixer_categories
         is_instant = len(effects) > 0 and len(products) == 0
 
         target_product = target_product or next(iter(products.keys()), None) if products else None
@@ -764,7 +770,8 @@ class ReagentCalculatorApp:
         elif is_instant:
             multiplier = amount_needed
 
-        translated_name = self.translations.get(recipe_id, recipe_id)
+        normalized_id = recipe_id.lower().replace(' ', '')
+        translated_name = self.translations.get(normalized_id, recipe_id)
         if include_header:
             header = f"{'  ' * depth}{format_amount(amount_needed)} {translated_name}"
 
@@ -774,6 +781,10 @@ class ReagentCalculatorApp:
                 header += " [ЦЕНТРИФУГА]"
             elif is_instant:
                 header += " [МГНОВЕННАЯ РЕАКЦИЯ]"
+            elif is_Shake:
+                header += " [ВЗБОЛТАТЬ]"
+            elif is_Stir:
+                header += " [ПЕРЕМЕШАТЬ]"
 
             if "minTemp" in recipe:
                 header += f"(мин. темп:{recipe['minTemp']}K)"
@@ -785,7 +796,8 @@ class ReagentCalculatorApp:
             required_amount = info["amount"]
             is_catalyst = info.get("catalyst", False)
             final_amount = required_amount * (multiplier if not is_catalyst else 1)
-            translated_name = self.translations.get(reactant, reactant)
+            normalized_reactant = reactant.lower().replace(' ', '').replace('-', '')
+            translated_name = self.translations.get(normalized_reactant, reactant)
 
             line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {translated_name}"
             if reactant in self.recipe_dict and not is_catalyst:
@@ -815,7 +827,8 @@ class ReagentCalculatorApp:
             products_text = []
             for product, amount in products.items():
                 product_amount = amount * multiplier
-                translated_product = self.translations.get(product, product)
+                normalized_product = product.lower().replace(' ', '').replace('-', '')
+                translated_product = self.translations.get(normalized_product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
             if products_text:
@@ -827,7 +840,8 @@ class ReagentCalculatorApp:
             products_text = []
             for product, amount in products.items():
                 product_amount = amount * multiplier
-                translated_product = self.translations.get(product, product)
+                normalized_product = product.lower().replace(' ', '').replace('-', '')
+                translated_product = self.translations.get(normalized_product, product)
                 products_text.append(f"{format_amount(product_amount)} {translated_product}")
 
             if products_text:
@@ -860,6 +874,57 @@ class ReagentCalculatorApp:
                                    f"{'  ' * (depth + 1)}Эффекты: {' | '.join(effects_text)}\n",
                                    current_color_tag)
 
+
+    def compare_versions(self, v1, v2):
+        try:
+            v1 = [int(part) for part in v1.split('.')]
+            v2 = [int(part) for part in v2.split('.')]
+        except ValueError:
+            return 0
+
+        for p1, p2 in zip(v1, v2):
+            if p1 > p2:
+                return 1
+            elif p1 < p2:
+                return -1
+        return 0 if len(v1) == len(v2) else 1 if len(v1) > len(v2) else -1
+
+    def check_for_updates(self):
+        try:
+            api_url = "https://api.github.com/repos/R-R0S/ss14-calc/releases/latest"
+            response = requests.get(api_url, timeout=10)
+            if response.status_code == 200:
+                release_data = response.json()
+                latest_version = release_data['tag_name'].lstrip('v')
+
+                if self.compare_versions(latest_version, self.current_version) > 0:
+                    self.add_update_notification()
+                    self.root.after(0, self.show_update_dialog, release_data['html_url'])
+        except Exception as e:
+            print(f"Ошибка проверки обновлений: {str(e)}")
+
+    def show_update_dialog(self, release_url):
+        if messagebox.askyesno(
+                "Доступно обновление",
+                f"Обнаружена новая версия!\n\nХотите перейти на страницу релиза?",
+                icon='question'
+        ):
+            webbrowser.open(release_url)
+
+    def add_update_notification(self):
+        base_title = f"SS14 Химический калькулятор by i_love_Megumin v{self.current_version}"
+        random_message = random.choice(self.update_messages)
+        new_title = f"{base_title} | {random_message}"
+        self.root.after(0, self.root.title, new_title)
+
+    # def debug_add_update_notification(self):
+    #     base_title = f"SS14 Химический калькулятор by i_love_Megumin v{self.current_version}"
+    #     random_message = self.update_messages[24]
+    #     new_title = f"{base_title} | {random_message}"
+    #     self.root.after(0, self.root.title, new_title)
+
+    def check_for_updates_async(self):
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
 
 if __name__ == "__main__":
     root = tk.Tk()
