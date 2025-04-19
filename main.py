@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import random
+import json
 import requests
 import threading
 import webbrowser
@@ -16,7 +17,7 @@ import tkinter as tk
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.current_version = "0.33104"
+        self.current_version = "0.34215"
         self.update_messages = [
             "Доступно обновление на GitHub! ⬆️",
             "Обновись! Новые фичи ждут! 🚀",
@@ -50,9 +51,8 @@ class ReagentCalculatorApp:
         else:
             icon_path = 'img/icon.ico'
         self.root.iconbitmap(icon_path)
-        self.root.geometry("1000x650")
+        self.root.geometry("900x600")
         self.root.configure(bg="#2e2e2e")
-
         self.recipe_categories = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
@@ -82,22 +82,119 @@ class ReagentCalculatorApp:
             'condiments': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
             'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/medicine.ftl',
         }
-
-
         self.recipes = []
         self.recipe_dict = {}
+        self.overlay_opacity = 0.95
+        self.language = 'ru'
+        self.depth_colors = [
+            "#FFFFFF", "#4EC9B0", "#569CD6",
+            "#B5CEA8", "#CE9178", "#C586C0"
+        ]
+        self.COLOR_NAMES = {
+            "Белый": "#FFFFFF",
+            "Бирюзовый": "#4EC9B0",
+            "Голубой": "#569CD6",
+            "Оливковый": "#B5CEA8",
+            "Коралловый": "#CE9178",
+            "Лаванда": "#C586C0",
+            "Лосось": "#FFA07A",
+            "Мята": "#98FB98",
+            "Сирень": "#DDA0DD",
+            "Золото": "#FFD700",
+            "Небо": "#87CEEB",
+            "Розовый": "#FF69B4",
+            "Бежевый": "#F5F5DC",
+            "Кремовый": "#FFFDD0",
+            "Серый": "#D3D3D3",
+            "Светло синий": "#AEC6CF",
+            "Светло зелёный": "#77DD77",
+            "Светло лиловый": "#CDA4DE"
+        }
+        self.color_vars = []
+        self.color_previews = []
+        self.custom_colors = self.depth_colors.copy()
+        self.custom_recipe_links = {}
+        self.custom_translation_links = {}
         self.load_images()
+        self.setup_styles()
+        self.load_settings()
         self.create_widgets()
         self.setup_directories()
         self.load_translations()
         self.load_recipes()
-
+        self.setup_clipboard_handlers()
         self.overlay_window = None
         self.overlay_content = None
         self.progress_visible = None
-
+        self.settings_win = None
         self.check_for_updates_async()
-        # self.debug_add_update_notification()
+
+
+    def setup_styles(self):
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure('.',
+                        background="#2e2e2e",
+                        foreground="white",
+                        fieldbackground="#4f4f4f",
+                        bordercolor="#2e2e2e",
+                        focuscolor=[])
+        style.configure("Custom.TLabelframe",
+                        background="#2e2e2e",
+                        foreground="white",
+                        borderwidth=0,
+                        relief='flat')
+        style.configure("Custom.TLabelframe.Label",
+                        background="#2e2e2e",
+                        foreground="white")
+        style.configure('Red.TButton',
+                        background="#d9534f",
+                        foreground="white",
+                        font=("Arial", 12),
+                        borderwidth=0)
+        style.map('Red.TButton',
+                  background=[('active', '#c9302c'), ('!active', '#d9534f')])
+        style.configure('TCombobox',
+                        background="#454545",
+                        foreground="white",
+                        fieldbackground="#4f4f4f",
+                        selectbackground="#5e5e5e",
+                        selectforeground="white",
+                        bordercolor="#454545",
+                        arrowcolor="white",
+                        arrowsize=12,
+                        padding=5)
+        style.map('TCombobox',
+                  fieldbackground=[('readonly', '#4f4f4f')],
+                  selectbackground=[('readonly', '#4f4f4f')],
+                  selectforeground=[('readonly', 'white')],
+                  background=[('active', '#5e5e5e')],
+                  bordercolor=[('active', '#6e6e6e'), ('focus', '#1e7e34')])
+        style.configure("Custom.Treeview",
+                        background="#3c3c3c",
+                        foreground="white",
+                        fieldbackground="#3c3c3c",
+                        borderwidth=0)
+        style.configure("Custom.Treeview.Heading",
+                        background="#454545",
+                        foreground="white",
+                        relief="flat",
+                        font=('Arial', 10, 'bold'))
+        style.map("Custom.Treeview.Heading",
+                  background=[('active', '#5e5e5e')],
+                  foreground=[('active', 'white')])
+
+        style.map("Custom.Treeview",
+                  background=[('selected', '#1e7e34')])
+        style.configure("Custom.TButton",
+                        background="#454545",
+                        foreground="white",
+                        bordercolor="#454545")
+        style.map("Custom.TButton",
+                  background=[('active', '#5e5e5e')])
+        style.configure("Custom.Toplevel",
+                        background="#2e2e2e")
+
 
     def load_translations(self):
         self.translations = {}
@@ -124,6 +221,7 @@ class ReagentCalculatorApp:
                 except Exception as e:
                     print(f"Ошибка загрузки перевода {filename}: {str(e)}")
 
+
     def start_resize(self, event, side):
         self.overlay_window._resize_data = {
             'side': side,
@@ -134,6 +232,7 @@ class ReagentCalculatorApp:
             'start_x_pos': self.overlay_window.winfo_x(),
             'start_y_pos': self.overlay_window.winfo_y()
         }
+
 
     def on_resize(self, event, side):
         if not hasattr(self.overlay_window, '_resize_data'):
@@ -179,6 +278,7 @@ class ReagentCalculatorApp:
 
         self.overlay_window.geometry(f"{width}x{height}+{x}+{y}")
 
+
     def toggle_overlay(self):
         if self.overlay_window and self.overlay_window.winfo_exists():
             self.overlay_window.destroy()
@@ -188,41 +288,35 @@ class ReagentCalculatorApp:
             self.create_overlay_window()
             self.overlay_btn.config(text="🖥️ Скрыть оверлей")
 
+
     def create_overlay_window(self):
         self.overlay_window = tk.Toplevel(self.root)
         self.overlay_window.wm_attributes("-topmost", True)
         self.overlay_window.configure(bg='#2e2e2e')
         self.overlay_window.overrideredirect(True)
-        self.overlay_window.geometry("400x300+100+100")
+        self.overlay_window.geometry("300x400+100+100")
         self.overlay_window.minsize(200, 150)
-        self.overlay_window.wm_attributes("-alpha", 0.95)
+        self.overlay_window.wm_attributes("-alpha", self.overlay_opacity)
 
-        # Главный контейнер
         main_frame = tk.Frame(self.overlay_window, bg='#2e2e2e')
         main_frame.pack(fill=tk.BOTH, expand=True)
 
-        # Заголовок окна
         title_bar = tk.Frame(main_frame, bg='#454545', height=30)
         title_bar.pack(fill=tk.X)
 
-        # Текст заголовка
         title_label = tk.Label(title_bar, text="Рецепт поверх окон", bg='#454545', fg='white')
         title_label.pack(side=tk.LEFT, padx=10)
 
-        # Кнопка закрытия
         close_btn = tk.Button(title_bar, text="×", command=self.toggle_overlay,
                             bg='#ff4444', fg='white', bd=0, padx=10)
         close_btn.pack(side=tk.RIGHT)
 
-        # Контент оверлея
         self.overlay_content = tk.Text(main_frame, wrap=tk.WORD, font=("Courier New", 10),
                                      bg="#3c3c3c", fg="white", padx=10, pady=10)
         self.overlay_content.pack(fill=tk.BOTH, expand=True)
 
-        # Зоны ресайза
         self.setup_resize_zones(main_frame)
 
-        # Привязки для перемещения окна
         title_bar.bind("<ButtonPress-1>", self.start_move)
         title_bar.bind("<B1-Motion>", self.on_move)
         title_label.bind("<ButtonPress-1>", self.start_move)
@@ -268,6 +362,7 @@ class ReagentCalculatorApp:
             frame.bind("<ButtonPress-1>", lambda e, s=side: self.start_resize(e, s))
             frame.bind("<B1-Motion>", lambda e, s=side: self.on_resize(e, s))
 
+
     def create_corner_grip(self, parent, corner, size):
         cursors = {
             "nw": "size_nw_se",
@@ -290,9 +385,11 @@ class ReagentCalculatorApp:
         frame.bind("<Button-1>", lambda e, c=corner: self.start_resize(e, c))
         frame.bind("<B1-Motion>", lambda e, c=corner: self.on_resize(e, c))
 
+
     def start_move(self, event):
         self.overlay_window._offset_x = event.x
         self.overlay_window._offset_y = event.y
+
 
     def on_move(self, event):
         x = self.overlay_window.winfo_x() + (event.x - self.overlay_window._offset_x)
@@ -316,6 +413,7 @@ class ReagentCalculatorApp:
                 end = ranges[i+1]
                 self.overlay_content.tag_add(tag, start, end)
 
+
     def setup_directories(self, upd = False):
         ood = False
         if not os.path.exists('recipes'):
@@ -326,6 +424,7 @@ class ReagentCalculatorApp:
             ood = True
         if ood and not upd:
             self.update_data_async()
+
 
     def load_images(self):
         import sys
@@ -366,6 +465,7 @@ class ReagentCalculatorApp:
                                     recipe['id'] = recipe_id[:-len("Drink")]
                                 recipe['category'] = category
                                 self.recipes.append(recipe)
+                    print(f'{filename} загружен!')
                 except Exception as e:
                     print(f"Ошибка загрузки {filename}: {e}")
 
@@ -377,6 +477,7 @@ class ReagentCalculatorApp:
         for entry in raw_data:
             if isinstance(entry, dict) and entry.get("type") == "reaction" and "id" in entry and "reactants" in entry:
                 yield entry
+
 
     def custom_yaml_loader(self, stream):
         class CustomLoader(yaml.SafeLoader):
@@ -444,15 +545,14 @@ class ReagentCalculatorApp:
         )
         github_btn.pack(side=tk.LEFT, padx=5)
 
-        decorative_btn = tk.Button(
+        self.settings_btn = tk.Button(
             right_buttons,
             text="⚙️",
+            command=self.create_settings_window,
             bg="#333333",
             fg="white",
-            font=("Arial", 10),
-            state=tk.DISABLED
-        )
-        decorative_btn.pack(side=tk.LEFT, padx=5)
+            font=("Arial", 10))
+        self.settings_btn.pack(side=tk.LEFT, padx=5)
 
         tk.Label(category_frame,
                 text="Выберите категорию:",
@@ -611,12 +711,10 @@ class ReagentCalculatorApp:
         )
         self.status_label.pack(fill=tk.X, padx=5)
 
-        self.depth_colors = [
-            "#FFFFFF", "#4EC9B0", "#569CD6",
-            "#B5CEA8", "#CE9178", "#C586C0"
-        ]
+
         for i, color in enumerate(self.depth_colors):
             self.result_text.tag_config(f"depth{i}", foreground=color)
+
 
     def update_recipes_list(self, event=None):
         order = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяabcdefghijklmnopqrstuvwxyz"
@@ -642,6 +740,7 @@ class ReagentCalculatorApp:
         else:
             self.recipe_var.set('')
 
+
     def update_data_async(self):
         self.update_btn.config(state=tk.DISABLED)
         self.progress_frame.pack(fill=tk.X, pady=5)
@@ -649,20 +748,23 @@ class ReagentCalculatorApp:
         self.status_label.config(text="Подготовка к обновлению...")
         threading.Thread(target=self.update_data).start()
 
+
     def hide_progress(self):
         self.progress_frame.pack_forget()
         self.progress_bar['value'] = 0
         self.status_label.config(text="")
 
+
     def update_data(self):
         try:
-            total_files = len(self.recipe_categories) + len(self.translation_files)
+            total_files = len(self.recipe_categories) + len(self.translation_files) + len(self.custom_recipe_links) + len(self.custom_translation_links)
             self.setup_directories(upd=True)
 
             self.root.after(0, self.progress_bar.configure, {'maximum': total_files})
             self.root.after(0, self.status_label.config, {'text': "Загрузка рецептов..."})
 
             for i, (category, url) in enumerate(self.recipe_categories.items()):
+                print(f'{category}: {url}')
                 response = requests.get(url)
                 if response.status_code == 200:
                     with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
@@ -696,8 +798,12 @@ class ReagentCalculatorApp:
         finally:
             self.root.after(0, self.update_btn.config, {'state': tk.NORMAL})
 
+
     def calculate_reactants(self):
         selected_translation = self.recipe_var.get()
+        scroll_position = self.result_text.yview()
+        self.result_text.delete(1.0, tk.END)
+        self.result_text.yview_moveto(scroll_position[0])
         if not selected_translation:
             messagebox.showwarning("Ошибка", "Выберите рецепт")
             return
@@ -730,13 +836,28 @@ class ReagentCalculatorApp:
     def resolve_reactants(self, recipe_id, amount_needed, depth=0,
                           target_product=None, include_header=True,
                           visited=None, text_widget=None):
+
+        color_index = depth % len(self.depth_colors)
+        current_color_tag = f"depth{color_index}"
+
+        if not self.result_text.tag_cget(current_color_tag, "foreground"):
+            self.result_text.tag_config(
+                current_color_tag,
+                foreground=self.depth_colors[color_index]
+            )
+
+
         def format_amount(value):
             return f"{value:.2f}".rstrip('0').rstrip('.') if '.' in f"{value:.2f}" else str(int(value))
 
         if visited is None:
             visited = set()
 
-        current_color_tag = f"depth{min(depth, len(self.depth_colors) - 1)}"
+        current_color_tag = f"depth{depth}"
+        self.result_text.tag_config(
+            f"depth{depth}",
+            foreground=self.depth_colors[depth % len(self.depth_colors)]
+        )
         recipe = self.recipe_dict.get(recipe_id)
 
         if not recipe:
@@ -889,6 +1010,7 @@ class ReagentCalculatorApp:
                 return -1
         return 0 if len(v1) == len(v2) else 1 if len(v1) > len(v2) else -1
 
+
     def check_for_updates(self):
         try:
             api_url = "https://api.github.com/repos/R-R0S/ss14-calc/releases/latest"
@@ -903,6 +1025,7 @@ class ReagentCalculatorApp:
         except Exception as e:
             print(f"Ошибка проверки обновлений: {str(e)}")
 
+
     def show_update_dialog(self, release_url):
         if messagebox.askyesno(
                 "Доступно обновление",
@@ -911,20 +1034,552 @@ class ReagentCalculatorApp:
         ):
             webbrowser.open(release_url)
 
+
     def add_update_notification(self):
         base_title = f"SS14 Химический калькулятор by i_love_Megumin v{self.current_version}"
         random_message = random.choice(self.update_messages)
         new_title = f"{base_title} | {random_message}"
         self.root.after(0, self.root.title, new_title)
 
-    # def debug_add_update_notification(self):
-    #     base_title = f"SS14 Химический калькулятор by i_love_Megumin v{self.current_version}"
-    #     random_message = self.update_messages[24]
-    #     new_title = f"{base_title} | {random_message}"
-    #     self.root.after(0, self.root.title, new_title)
 
     def check_for_updates_async(self):
         threading.Thread(target=self.check_for_updates, daemon=True).start()
+
+
+    def create_settings_window(self):
+        if self.settings_win and self.settings_win.winfo_exists():
+            return
+
+        self.settings_btn.config(state=tk.DISABLED)
+        self.settings_win = tk.Toplevel(self.root)
+        self.settings_win.geometry("500x400")
+        self.settings_win.title("Настройки")
+        self.settings_win.configure(bg="#2e2e2e")
+        self.settings_win.protocol("WM_DELETE_WINDOW", self.close_settings)
+
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("TNotebook", background="#2e2e2e", borderwidth=0)
+        style.configure("TNotebook.Tab", background="#454545", foreground="white", padding=[10, 5])
+        style.map("TNotebook.Tab", background=[("selected", "#1e7e34")])
+
+        notebook = ttk.Notebook(self.settings_win)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        general_frame = tk.Frame(notebook, bg="#2e2e2e")
+        self.create_general_tab(general_frame)
+        notebook.add(general_frame, text="Основные")
+
+        links_frame = tk.Frame(notebook, bg="#2e2e2e")
+        self.create_links_tab(links_frame)
+        notebook.add(links_frame, text="Ссылки")
+
+        about_frame = tk.Frame(notebook, bg="#2e2e2e")
+        self.create_about_tab(about_frame)
+        notebook.add(about_frame, text="О приложении")
+
+
+    def update_opacity_display(self, value):
+        opacity = float(value) / 100
+        self.overlay_opacity = opacity
+        self.opacity_label.config(text=f"Прозрачность оверлея - {int(opacity * 100)}%")
+
+        if self.overlay_window:
+            self.overlay_window.wm_attributes("-alpha", opacity)
+
+
+    def create_general_tab(self, parent):
+        style = ttk.Style()
+        style.configure("Custom.Horizontal.TScale",
+                        background="#2e2e2e",
+                        troughcolor="#454545",
+                        bordercolor="#454545",
+                        lightcolor="#454545",
+                        darkcolor="#454545",
+                        sliderthickness=15,
+                        sliderlength=30,
+                        gripcount=0)
+
+        style.map("Custom.Horizontal.TScale",
+                  slidercolor=[('active', '#1e7e34'), ('!active', '#5e5e5e')])
+
+        opacity_frame = ttk.Frame(parent)
+        opacity_frame.pack(fill=tk.X, pady=15, padx=10)
+
+        self.opacity_label = ttk.Label(
+            opacity_frame,
+            text=f"Прозрачность оверлея - {int(self.overlay_opacity * 100)}%",
+            font=('Arial', 10),
+            background="#2e2e2e",
+            foreground="white"
+        )
+        self.opacity_label.pack(anchor=tk.W, pady=(0, 5))
+
+        self.opacity_slider = ttk.Scale(
+            opacity_frame,
+            from_=30,
+            to=100,
+            value=self.overlay_opacity * 100,
+            command=self.update_opacity_display,
+            style="Custom.Horizontal.TScale",
+            orient=tk.HORIZONTAL
+        )
+        self.opacity_slider.pack(fill=tk.X)
+
+
+        lang_frame = tk.Frame(parent, bg="#2e2e2e")
+        lang_frame.pack(fill=tk.X, pady=5, padx=10)
+
+        tk.Label(lang_frame, text="Язык интерфейса:", bg="#2e2e2e", fg="white").pack(side=tk.LEFT)
+        self.lang_var = tk.StringVar(value=self.language)
+        ttk.Combobox(
+            lang_frame,
+            textvariable=self.lang_var,
+            values=[('ru', 'Русский')],
+            state="readonly"
+        ).pack(side=tk.LEFT)
+        self.lang_var.trace_add("write", self.update_language)
+
+        color_frame = ttk.LabelFrame(parent,
+                                     text="Цвета уровней рекурсии",
+                                     style="Custom.TLabelframe")
+        color_frame.pack(fill=tk.BOTH, pady=10, padx=5, expand=True)
+
+        self.color_vars = []
+        self.color_previews = []
+        color_names = list(self.COLOR_NAMES.keys())
+
+        for col in [0, 1]:
+            column_frame = ttk.Frame(color_frame)
+            column_frame.grid(row=0, column=col, padx=10, sticky='nsew')
+
+            for i in range(3):
+                idx = col * 3 + i
+                if idx >= 6:
+                    break
+
+                row = ttk.Frame(column_frame)
+                row.pack(fill=tk.X, pady=2)
+
+                hex_color = self.depth_colors[idx]
+                color_preview = tk.Canvas(row, width=20, height=20,
+                                          bg=hex_color,
+                                          highlightthickness=0)
+                color_preview.pack(side=tk.LEFT, padx=(0, 5))
+                self.color_previews.append(color_preview)
+
+                default_name = self.get_color_name(hex_color)
+                color_var = tk.StringVar(value=default_name)
+                color_var.trace_add("write", lambda *a, i=idx: self.update_color(i))
+
+                cb = ttk.Combobox(
+                    row,
+                    textvariable=color_var,
+                    values=color_names,
+                    state="readonly",
+                    width=14,
+                    style="Custom.TCombobox"
+                )
+                cb.pack(side=tk.LEFT)
+                self.color_vars.append(color_var)
+
+
+    def get_color_name(self, hex_code):
+        for name, code in self.COLOR_NAMES.items():
+            if code == hex_code:
+                return name
+        return "белый"
+
+
+    def update_color(self, index):
+        color_name = self.color_vars[index].get()
+        hex_color = self.COLOR_NAMES[color_name]
+        self.depth_colors[index] = hex_color
+        self.color_previews[index].config(bg=hex_color)
+        self.result_text.tag_config(f"depth{index}", foreground=hex_color)
+        self.update_overlay_content()
+        if self.recipe_var.get():
+            self.calculate_reactants()
+
+
+    def get_color_palette(self):
+        return [
+            "#FFFFFF", "#4EC9B0", "#569CD6",
+            "#B5CEA8", "#CE9178", "#C586C0",
+            "#FFA07A", "#98FB98", "#DDA0DD",
+            "#FFD700", "#87CEEB", "#FF69B4"
+        ]
+
+
+    def close_settings(self):
+            self.save_settings()
+            if self.settings_win:
+                self.settings_win.destroy()
+            self.settings_btn.config(state=tk.NORMAL)
+            self.settings_win = None
+
+
+    def create_links_tab(self, parent):
+        main_frame = ttk.Frame(parent)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        recipes_frame = ttk.Frame(notebook)
+        self.create_links_table(recipes_frame, is_recipe=True)
+        notebook.add(recipes_frame, text="Пользовательские рецепты")
+
+        translations_frame = ttk.Frame(notebook)
+        self.create_links_table(translations_frame, is_recipe=False)
+        notebook.add(translations_frame, text="Пользовательские переводы")
+
+
+    def create_links_table(self, parent, is_recipe):
+        container = ttk.Frame(parent)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        tree_frame = ttk.Frame(container)
+        tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        columns = ("Название", "Ссылка")
+        tree = ttk.Treeview(
+            tree_frame,
+            columns=columns,
+            show="headings",
+            style="Custom.Treeview",
+            selectmode="browse"
+        )
+
+        tree.heading("Название", text="Название")
+        tree.heading("Ссылка", text="Ссылка")
+        tree.column("Название", width=150, anchor=tk.W)
+        tree.column("Ссылка", width=400, anchor=tk.W)
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        data = self.custom_recipe_links if is_recipe else self.custom_translation_links
+        for name, url in data.items():
+            tree.insert("", tk.END, values=(name, url))
+
+        btn_frame = ttk.Frame(container)
+        btn_frame.pack(fill=tk.X, pady=5, padx=5)
+
+        ttk.Button(btn_frame,
+                   text="Добавить",
+                   style="Custom.TButton",
+                   command=lambda: self.edit_link(tree, is_recipe, False)
+                   ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(btn_frame,
+                   text="Редактировать",
+                   style="Custom.TButton",
+                   command=lambda: self.edit_link(tree, is_recipe, True)
+                   ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(btn_frame,
+                   text="Удалить",
+                   style="Custom.TButton",
+                   command=lambda: self.delete_link(tree, is_recipe)
+                   ).pack(side=tk.LEFT, padx=2)
+
+        if is_recipe:
+            self.recipe_tree = tree
+        else:
+            self.translation_tree = tree
+
+
+    def setup_clipboard_handlers(self):
+        def handle_paste(event):
+            try:
+                widget = event.widget
+                if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text)):
+                    clipboard_text = self.root.clipboard_get()
+                    if clipboard_text:
+                        widget.insert(tk.INSERT, clipboard_text)
+            except tk.TclError:
+                pass
+
+
+    def edit_link(self, tree, is_recipe, is_edit=False):
+        item = tree.selection() if is_edit else None
+        current_values = tree.item(item, "values") if item else ("", "")
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Редактирование ссылки" if is_edit else "Добавление ссылки")
+        dialog.configure(bg="#2e2e2e")
+        dialog.geometry("400x180")
+        dialog.resizable(False, False)
+
+        style = ttk.Style()
+        style.configure("Dialog.TLabel",
+                        background="#2e2e2e",
+                        foreground="white",
+                        font=("Arial", 10))
+
+        style.configure("Dialog.TEntry",
+                        fieldbackground="#4f4f4f",
+                        foreground="white",
+                        insertcolor="white",
+                        borderwidth=2,
+                        relief="flat")
+
+        style.map("Dialog.TEntry",
+                  fieldbackground=[("active", "#5e5e5e")])
+
+        style.configure("Dialog.TButton",
+                        background="#454545",
+                        foreground="white",
+                        width=10,
+                        borderwidth=0)
+
+        style.map("Dialog.TButton",
+                  background=[("active", "#5e5e5e")])
+
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(padx=15, pady=15, fill=tk.BOTH, expand=True)
+
+        ttk.Label(main_frame,
+                  text="Название:",
+                  style="Dialog.TLabel").pack(anchor=tk.W)
+
+        name_entry = ttk.Entry(main_frame,
+                               width=40,
+                               style="Dialog.TEntry")
+        name_entry.insert(0, current_values[0])
+        name_entry.pack(pady=5)
+
+        ttk.Label(main_frame,
+                  text="Ссылка:",
+                  style="Dialog.TLabel").pack(anchor=tk.W)
+
+        url_entry = ttk.Entry(main_frame,
+                              width=40,
+                              style="Dialog.TEntry")
+        url_entry.insert(0, current_values[1])
+        url_entry.pack(pady=5)
+
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(pady=10)
+
+        def save_changes():
+            new_name = name_entry.get().strip()
+            new_url = url_entry.get().strip()
+            if not new_name or not new_url:
+                messagebox.showerror("Ошибка", "Название и ссылка не могут быть пустыми")
+                return
+            if not new_url.startswith(('http://', 'https://')):
+                messagebox.showerror("Ошибка", "Ссылка должна начинаться с http:// или https://")
+                return
+
+            if item:
+                tree.item(item, values=(new_name, new_url))
+            else:
+                tree.insert("", tk.END, values=(new_name, new_url))
+
+            if is_recipe:
+                self.custom_recipe_links[new_name] = new_url
+                self.recipe_categories[new_name] = new_url
+            else:
+                self.custom_translation_links[new_name] = new_url
+                self.translation_files[new_name] = new_url
+
+            self.save_settings()
+            dialog.destroy()
+
+        ttk.Button(btn_frame,
+                   text="Сохранить",
+                   style="Dialog.TButton",
+                   command=save_changes).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(btn_frame,
+                   text="Отмена",
+                   style="Dialog.TButton",
+                   command=dialog.destroy).pack(side=tk.RIGHT, padx=5)
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.bind("<Destroy>", lambda e: self.settings_btn.config(state=tk.NORMAL))
+
+    def delete_link(self, tree, is_recipe):
+        selected_item = tree.selection()
+        if selected_item:
+            name = tree.item(selected_item, "values")[0]
+            tree.delete(selected_item)
+
+            if is_recipe:
+                if name in self.custom_recipe_links:
+                    del self.custom_recipe_links[name]
+                if name in self.recipe_categories:
+                    del self.recipe_categories[name]
+                self.category_combobox['values'] = list(self.recipe_categories.keys())
+            else:
+                if name in self.custom_translation_links:
+                    del self.custom_translation_links[name]
+                if name in self.translation_files:
+                    del self.translation_files[name]
+
+            self.save_settings()
+            self.load_recipes()
+            self.update_recipes_list()
+
+
+    def update_categories(self, is_recipe, name, url):
+        if is_recipe:
+            self.recipe_categories[name] = url
+        else:
+            self.translation_files[name] = url
+
+
+    def update_overlay_opacity(self, value):
+        self.overlay_opacity = value
+        if self.overlay_window:
+            self.overlay_window.wm_attributes("-alpha", value)
+
+
+    def update_language(self, *args):
+        self.language = self.lang_var.get()
+        # Мэйби когда-то позже
+
+
+    def save_settings(self):
+        self.custom_recipe_links = {self.recipe_tree.item(item)['values'][0]: self.recipe_tree.item(item)['values'][1]
+                                    for item in self.recipe_tree.get_children()}
+
+        self.custom_translation_links = {
+            self.translation_tree.item(item)['values'][0]: self.translation_tree.item(item)['values'][1]
+            for item in self.translation_tree.get_children()}
+
+        hex_colors = [self.COLOR_NAMES[var.get()] for var in self.color_vars]
+
+        settings = {
+            'opacity': self.overlay_opacity,
+            'language': self.language,
+            'depth_colors': hex_colors,
+            'custom_recipes': self.custom_recipe_links,
+            'custom_translations': self.custom_translation_links
+        }
+
+        try:
+            with open('settings.cfg', 'w') as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить настройки: {str(e)}")
+
+        self.recipe_categories = {
+            **self.recipe_categories,
+            **self.custom_recipe_links
+        }
+        self.category_combobox['values'] = list(self.recipe_categories.keys())
+        self.load_recipes()
+        self.load_translations()
+        self.update_recipes_list()
+
+
+    def load_settings(self):
+        try:
+            with open('settings.cfg', 'r') as f:
+                settings = json.load(f)
+                self.overlay_opacity = settings.get('opacity', 0.95)
+                self.language = settings.get('language', 'ru')
+                if 'depth_colors' in settings:
+                    self.depth_colors = []
+                    self.depth_colors = [
+                        self.COLOR_NAMES.get(color, color)
+                        for color in settings['depth_colors']
+                    ]
+                    self.depth_colors = self.depth_colors[:6]
+                    print(f'цвета {self.depth_colors} - загруженны!')
+                    for i, color in enumerate(self.depth_colors):
+                        if i < len(self.color_vars):
+                            color_name = self.get_color_name(color)
+                            self.color_vars[i].set(color_name)
+
+                self.custom_recipe_links = settings.get('custom_recipes', {})
+                self.custom_translation_links = settings.get('custom_translations', {})
+
+                self.recipe_categories.update(self.custom_recipe_links)
+                self.translation_files.update(self.custom_translation_links)
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить настройки: {str(e)}")
+            self.depth_colors = list(self.COLOR_NAMES.values())[:6]
+
+
+    def reset_settings(self):
+        if messagebox.askyesno("Сброс настроек",
+                               "Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?"):
+            try:
+                if os.path.exists('settings.cfg'):
+                    os.remove('settings.cfg')
+
+                self.overlay_opacity = 0.95
+                self.language = 'ru'
+                self.depth_colors = [
+                    "#FFFFFF", "#4EC9B0", "#569CD6",
+                    "#B5CEA8", "#CE9178", "#C586C0"
+                ]
+                self.custom_recipe_links = {}
+                self.custom_translation_links = {}
+
+                if self.settings_win and self.settings_win.winfo_exists():
+                    self.settings_win.destroy()
+                    self.settings_btn.config(state=tk.NORMAL)
+                    self.settings_win = None
+
+                for i in range(len(self.depth_colors)):
+                    self.result_text.tag_config(
+                        f"depth{i}",
+                        foreground=self.depth_colors[i]
+                    )
+
+                if self.recipe_var.get():
+                    self.calculate_reactants()
+
+                messagebox.showinfo("Сброс настроек", "Настройки успешно сброшены!")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось сбросить настройки: {str(e)}")
+
+
+    def create_about_tab(self, parent):
+        main_frame = tk.Frame(parent, bg="#2e2e2e")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        info_text = f"""SS14 Химический калькулятор
+    Версия: {self.current_version}
+    Автор: i_love_Megumin aka R-R0S
+
+Вы можете добавить свои собственные рецепты,
+достаточно положить файл.yml с рецептом в папку recipes
+или добавить ссылку на файл рецептов, например с GitHub
+проекта, на котором вы играете. Аналогично с переводами.
+
+Если вы добавили рецепты, не забудьте обновить данные !
+
+Если вы сталкнулись с проблемой -
+попробуйте сбросить настройки и перезапустить приложение!"""
+
+        info_label = tk.Label(
+            main_frame,
+            text=info_text,
+            bg="#2e2e2e",
+            fg="white",
+            font=("Arial", 11),
+            justify=tk.LEFT
+        )
+        info_label.pack(pady=10, anchor=tk.W)
+
+        reset_btn = ttk.Button(
+            main_frame,
+            text="Сбросить все настройки",
+            command=self.reset_settings,
+            style='Red.TButton',
+        )
+        reset_btn.pack(pady=10)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
