@@ -8,6 +8,7 @@ import json
 import requests
 import threading
 import webbrowser
+import shutil
 from PIL import Image as PILImage
 from PIL import ImageTk
 from tkinter import *
@@ -54,7 +55,9 @@ class ReagentCalculatorApp:
         self.root.iconbitmap(icon_path)
         self.root.geometry("900x620")
         self.root.configure(bg="#2e2e2e")
-        self.recipe_categories = {
+        self.recipe_categories = {}
+        self.translation_files = {}
+        self.base_recipe_categories = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
             'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml',
@@ -62,7 +65,7 @@ class ReagentCalculatorApp:
             'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml',
             'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/SS220/Recipes/Reactions/drinks.yml'
         }
-        self.translation_files = {
+        self.base_translation_files = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/medicine.ftl',
             'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/chemicals.ftl',
             'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
@@ -89,7 +92,7 @@ class ReagentCalculatorApp:
         self.current_gif_frame = 0
         self.animation_job = None
         self.resize_in_progress = False
-        self.frame_delay = 150
+        self.frame_delay = 130
         self.recipes = []
         self.recipe_dict = {}
         self.overlay_opacity = 0.95
@@ -120,20 +123,17 @@ class ReagentCalculatorApp:
         }
         self.color_vars = []
         self.color_previews = []
-        self.custom_colors = self.depth_colors.copy()
         self.custom_recipe_links = {}
         self.custom_translation_links = {}
         self.load_images()
         self.setup_styles()
         self.load_settings()
-        self.create_widgets()
-        self.setup_directories()
+        self.setup_directories(upd=True)
         self.load_translations()
         self.load_recipes()
-        self.setup_clipboard_handlers()
+        self.create_widgets()
         self.overlay_window = None
         self.overlay_content = None
-        self.progress_visible = None
         self.settings_win = None
         self.check_for_updates_async()
 
@@ -548,9 +548,6 @@ class ReagentCalculatorApp:
             self.current_gif_frame = 0
             self.animation_job = None
 
-            total_frames = self.original_gif.n_frames
-            frame_indices = range(0, total_frames, 2 if total_frames > 30 else 1)
-
         except Exception as e:
             print(f"Ошибка загрузки аватара: {str(e)}")
             self.gif_frames = []
@@ -564,9 +561,6 @@ class ReagentCalculatorApp:
 
 
     def animate_gif(self):
-        if not self.gif_frames or self.resize_in_progress:
-            return
-
         self.current_gif_frame = (self.current_gif_frame + 1) % len(self.gif_frames)
         try:
             self.avatar_label.configure(image=self.gif_frames[self.current_gif_frame])
@@ -630,11 +624,14 @@ class ReagentCalculatorApp:
                                 if recipe_id.endswith("Drink"):
                                     recipe['id'] = recipe_id[:-len("Drink")]
                                 recipe['category'] = category
-                                self.recipes.append(recipe)
+                                if(category not in self.recipe_categories.keys()):
+                                    self.recipe_categories[category] = f'recipes/{filename}'
+                                    self.recipes.append(recipe)
+                                else:
+                                    self.recipes.append(recipe)
                     print(f'{filename} загружен!')
                 except Exception as e:
                     print(f"Ошибка загрузки {filename}: {e}")
-
         self.recipe_dict = {recipe['id']: recipe for recipe in self.recipes}
         self.recipes.sort(key=lambda x: x['id'].lower())
 
@@ -927,7 +924,6 @@ class ReagentCalculatorApp:
         )
         self.status_label.pack(fill=tk.X, padx=5)
 
-
         for i, color in enumerate(self.depth_colors):
             self.result_text.tag_config(f"depth{i}", foreground=color)
 
@@ -975,7 +971,7 @@ class ReagentCalculatorApp:
 
     def update_data(self):
         try:
-            total_files = len(self.recipe_categories) + len(self.translation_files) + len(self.custom_recipe_links) + len(self.custom_translation_links)
+            total_files = len(self.recipe_categories) + len(self.translation_files)
             self.setup_directories(upd=True)
 
             self.root.after(0, self.progress_bar.configure, {'maximum': total_files})
@@ -983,18 +979,23 @@ class ReagentCalculatorApp:
 
             for i, (category, url) in enumerate(self.recipe_categories.items()):
                 print(f'{category}: {url}')
-                response = requests.get(url)
+                try:
+                    response = requests.get(url)
+                except Exception as e:
+                    print(f'cant update category {category}, {e}')
                 if response.status_code == 200:
                     with open(f'recipes/{category}.yml', 'w', encoding='utf-8') as f:
                         f.write(response.text)
-
                 self.root.after(0, self.progress_bar.step, 1)
                 self.root.after(0, self.status_label.config,
                                 {'text': f"Загружено рецептов: {i + 1}/{len(self.recipe_categories)}"})
 
             self.root.after(0, self.status_label.config, {'text': "Загрузка переводов..."})
             for i, (name, url) in enumerate(self.translation_files.items()):
-                response = requests.get(url)
+                try:
+                    response = requests.get(url)
+                except Exception as e:
+                    print(f'cant update translations {name}, {e}')
                 if response.status_code == 200:
                     with open(f'translations/{name}.ftl', 'w', encoding='utf-8') as f:
                         f.write(response.text)
@@ -1173,7 +1174,6 @@ class ReagentCalculatorApp:
             if products_text:
                 text_widget.insert(tk.END,
                                    f"{'  ' * (depth + 1)}Продукты электролиза: {' + '.join(products_text)}\n", current_color_tag)
-
 
         if is_centrifuge:
             products_text = []
@@ -1420,15 +1420,6 @@ class ReagentCalculatorApp:
             self.calculate_reactants()
 
 
-    def get_color_palette(self):
-        return [
-            "#FFFFFF", "#4EC9B0", "#569CD6",
-            "#B5CEA8", "#CE9178", "#C586C0",
-            "#FFA07A", "#98FB98", "#DDA0DD",
-            "#FFD700", "#87CEEB", "#FF69B4"
-        ]
-
-
     def close_settings(self):
             self.save_settings()
             if self.settings_win:
@@ -1446,11 +1437,11 @@ class ReagentCalculatorApp:
 
         recipes_frame = ttk.Frame(notebook)
         self.create_links_table(recipes_frame, is_recipe=True)
-        notebook.add(recipes_frame, text="Пользовательские рецепты")
+        notebook.add(recipes_frame, text="Рецепты")
 
         translations_frame = ttk.Frame(notebook)
         self.create_links_table(translations_frame, is_recipe=False)
-        notebook.add(translations_frame, text="Пользовательские переводы")
+        notebook.add(translations_frame, text="Переводы")
 
 
     def create_links_table(self, parent, is_recipe):
@@ -1583,6 +1574,7 @@ class ReagentCalculatorApp:
         btn_frame = ttk.Frame(main_frame)
         btn_frame.pack(pady=10)
 
+
         def save_changes():
             new_name = name_entry.get().strip()
             new_url = url_entry.get().strip()
@@ -1621,6 +1613,7 @@ class ReagentCalculatorApp:
         dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
         dialog.bind("<Destroy>", lambda e: self.settings_btn.config(state=tk.NORMAL))
 
+
     def delete_link(self, tree, is_recipe):
         selected_item = tree.selection()
         if selected_item:
@@ -1633,11 +1626,21 @@ class ReagentCalculatorApp:
                 if name in self.recipe_categories:
                     del self.recipe_categories[name]
                 self.category_combobox['values'] = list(self.recipe_categories.keys())
+                try:
+                    if os.path.exists(f'recipes/{name}.yml'):
+                        os.remove(f'recipes/{name}.yml')
+                except:
+                    print(f"Не удалось удалить {name}.yml")
             else:
                 if name in self.custom_translation_links:
                     del self.custom_translation_links[name]
                 if name in self.translation_files:
                     del self.translation_files[name]
+                try:
+                    if os.path.exists(f'translations/{name}.ftl'):
+                        os.remove(f'translations/{name}.ftl')
+                except:
+                    print(f"Не удалось удалить {name}.ftl")
 
             self.save_settings()
             self.load_recipes()
@@ -1721,7 +1724,10 @@ class ReagentCalculatorApp:
                 self.recipe_categories.update(self.custom_recipe_links)
                 self.translation_files.update(self.custom_translation_links)
         except FileNotFoundError:
-            pass
+            self.custom_recipe_links = self.base_recipe_categories.copy()
+            self.custom_translation_links = self.base_translation_files.copy()
+            self.recipe_categories.update(self.custom_recipe_links)
+            self.translation_files.update(self.custom_translation_links)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось загрузить настройки: {str(e)}")
             self.depth_colors = list(self.COLOR_NAMES.values())[:6]
@@ -1733,15 +1739,18 @@ class ReagentCalculatorApp:
             try:
                 if os.path.exists('settings.cfg'):
                     os.remove('settings.cfg')
-
+                if os.path.exists('recipes'):
+                    shutil.rmtree('recipes')
+                if os.path.exists('translations'):
+                    shutil.rmtree('translations')
                 self.overlay_opacity = 0.95
                 self.language = 'ru'
                 self.depth_colors = [
                     "#FFFFFF", "#4EC9B0", "#569CD6",
                     "#B5CEA8", "#CE9178", "#C586C0"
                 ]
-                self.custom_recipe_links = {}
-                self.custom_translation_links = {}
+                self.custom_recipe_links = self.base_recipe_categories.copy()
+                self.custom_translation_links = self.base_translation_files.copy()
 
                 if self.settings_win and self.settings_win.winfo_exists():
                     self.settings_win.destroy()
@@ -1754,8 +1763,7 @@ class ReagentCalculatorApp:
                         foreground=self.depth_colors[i]
                     )
 
-                if self.recipe_var.get():
-                    self.calculate_reactants()
+                self.update_recipes_list()
 
                 messagebox.showinfo("Сброс настроек", "Настройки успешно сброшены!")
             except Exception as e:
@@ -1797,6 +1805,7 @@ class ReagentCalculatorApp:
             style='Red.TButton',
         )
         reset_btn.pack(pady=10)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
