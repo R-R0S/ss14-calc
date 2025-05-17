@@ -2,6 +2,7 @@ import yaml
 import os
 import re
 import sys
+import glob
 import random
 import json
 import requests
@@ -17,7 +18,7 @@ import tkinter as tk
 class ReagentCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.current_version = "0.34215"
+        self.current_version = "1.45215"
         self.update_messages = [
             "Доступно обновление на GitHub! ⬆️",
             "Обновись! Новые фичи ждут! 🚀",
@@ -51,7 +52,7 @@ class ReagentCalculatorApp:
         else:
             icon_path = 'img/icon.ico'
         self.root.iconbitmap(icon_path)
-        self.root.geometry("900x600")
+        self.root.geometry("900x620")
         self.root.configure(bg="#2e2e2e")
         self.recipe_categories = {
             'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
@@ -82,6 +83,13 @@ class ReagentCalculatorApp:
             'condiments': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
             'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/medicine.ftl',
         }
+        self.search_var = tk.StringVar()
+        self.search_results = []
+        self.gif_frames = []
+        self.current_gif_frame = 0
+        self.animation_job = None
+        self.resize_in_progress = False
+        self.frame_delay = 150
         self.recipes = []
         self.recipe_dict = {}
         self.overlay_opacity = 0.95
@@ -153,7 +161,7 @@ class ReagentCalculatorApp:
                         font=("Arial", 12),
                         borderwidth=0)
         style.map('Red.TButton',
-                  background=[('active', '#c9302c'), ('!active', '#d9534f')])
+                        background=[('active', '#c9302c'), ('!active', '#d9534f')])
         style.configure('TCombobox',
                         background="#454545",
                         foreground="white",
@@ -165,11 +173,11 @@ class ReagentCalculatorApp:
                         arrowsize=12,
                         padding=5)
         style.map('TCombobox',
-                  fieldbackground=[('readonly', '#4f4f4f')],
-                  selectbackground=[('readonly', '#4f4f4f')],
-                  selectforeground=[('readonly', 'white')],
-                  background=[('active', '#5e5e5e')],
-                  bordercolor=[('active', '#6e6e6e'), ('focus', '#1e7e34')])
+                        fieldbackground=[('readonly', '#4f4f4f')],
+                        selectbackground=[('readonly', '#4f4f4f')],
+                        selectforeground=[('readonly', 'white')],
+                        background=[('active', '#5e5e5e')],
+                        bordercolor=[('active', '#6e6e6e'), ('focus', '#1e7e34')])
         style.configure("Custom.Treeview",
                         background="#3c3c3c",
                         foreground="white",
@@ -181,17 +189,16 @@ class ReagentCalculatorApp:
                         relief="flat",
                         font=('Arial', 10, 'bold'))
         style.map("Custom.Treeview.Heading",
-                  background=[('active', '#5e5e5e')],
-                  foreground=[('active', 'white')])
-
+                        background=[('active', '#5e5e5e')],
+                        foreground=[('active', 'white')])
         style.map("Custom.Treeview",
-                  background=[('selected', '#1e7e34')])
+                        background=[('selected', '#1e7e34')])
         style.configure("Custom.TButton",
                         background="#454545",
                         foreground="white",
                         bordercolor="#454545")
         style.map("Custom.TButton",
-                  background=[('active', '#5e5e5e')])
+                        background=[('active', '#5e5e5e')])
         style.configure("Custom.Toplevel",
                         background="#2e2e2e")
 
@@ -287,6 +294,101 @@ class ReagentCalculatorApp:
         else:
             self.create_overlay_window()
             self.overlay_btn.config(text="🖥️ Скрыть оверлей")
+
+
+    def on_search_keyrelease(self, event):
+        if event.keysym in ('Return', 'Up', 'Down', 'Left', 'Right'):
+            return
+        search_term = self.search_var.get().lower()
+        if not search_term:
+            self.search_entry['values'] = []
+            return
+
+        results = []
+        for recipe in self.recipes:
+            normalized_id = recipe['id'].lower().replace(' ', '')
+            translated = self.translations.get(normalized_id, recipe['id']).lower()
+
+            if search_term in translated or search_term in recipe['id'].lower():
+                results.append({
+                    'translated': self.translations.get(normalized_id, recipe['id']),
+                    'id': recipe['id'],
+                    'category': recipe['category']
+                })
+
+        max_results = 15
+        displayed_results = [f"{res['translated']} ({res['category']})" for res in results[:max_results]]
+        self.search_entry['values'] = displayed_results
+        self.search_results = results[:max_results]
+
+
+    def on_search_select(self, event):
+        if not self.search_results:
+            return
+
+        index = self.search_entry.current()
+        if index == -1:
+            return
+
+        selected = self.search_results[index]
+        self.category_var.set(selected['category'])
+        self.update_recipes_list()
+
+        translated_names = [self.recipe_map.get(name) for name in self.recipe_combobox['values']]
+        try:
+            idx = translated_names.index(selected['id'])
+            self.recipe_var.set(self.recipe_combobox['values'][idx])
+        except ValueError:
+            return
+
+        self.root.after(100, self.calculate_reactants)
+
+
+    def on_search_enter(self, event):
+        search_term = self.search_var.get().strip().lower()
+        if not search_term:
+            return
+
+        best_match = self.get_best_match(search_term)
+        if best_match:
+            self.category_var.set(best_match['category'])
+            self.update_recipes_list()
+
+            translated_names = self.recipe_combobox['values']
+            target_name = self.translations.get(
+                best_match['id'].lower().replace(' ', ''),
+                best_match['id']
+            )
+
+            if target_name in translated_names:
+                self.recipe_var.set(target_name)
+                self.calculate_reactants()
+            else:
+                if translated_names:
+                    self.recipe_var.set(translated_names[0])
+                    self.calculate_reactants()
+
+
+    def get_best_match(self, search_term):
+        best_score = -1
+        best_match = None
+        for recipe in self.recipes:
+            normalized_id = recipe['id'].lower().replace(' ', '')
+            translated = self.translations.get(normalized_id, recipe['id']).lower()
+
+            score = 0
+            if search_term in translated:
+                score += 2
+            if search_term in recipe['id'].lower():
+                score += 1
+            if translated.startswith(search_term):
+                score += 1
+
+            if score > best_score:
+                best_score = score
+                best_match = recipe
+
+        return best_match
 
 
     def create_overlay_window(self):
@@ -427,18 +529,31 @@ class ReagentCalculatorApp:
 
 
     def load_images(self):
-        import sys
         if getattr(sys, 'frozen', False):
             base_path = sys._MEIPASS
         else:
             base_path = os.path.dirname(__file__)
 
         try:
-            avatar_path = os.path.join(base_path, 'img', 'avatar.png')
-            self.avatar_image = ImageTk.PhotoImage(PILImage.open(avatar_path).resize((80, 80)))
+            gif_files = glob.glob(os.path.join(base_path, 'img', '[0-9]*.gif'))
+            if not gif_files:
+                raise FileNotFoundError("No GIF files found")
+
+            selected_gif = random.choice(gif_files)
+            print(f"Loading GIF: {selected_gif}")
+
+            self.original_gif = PILImage.open(selected_gif)
+
+            self.prepare_gif_frames(self.original_gif.size)
+            self.current_gif_frame = 0
+            self.animation_job = None
+
+            total_frames = self.original_gif.n_frames
+            frame_indices = range(0, total_frames, 2 if total_frames > 30 else 1)
+
         except Exception as e:
             print(f"Ошибка загрузки аватара: {str(e)}")
-            self.avatar_image = None
+            self.gif_frames = []
 
         try:
             discord_path = os.path.join(base_path, 'img', 'discord.png')
@@ -446,6 +561,57 @@ class ReagentCalculatorApp:
         except Exception as e:
             print(f"Ошибка загрузки Discord: {str(e)}")
             self.discord_image = None
+
+
+    def animate_gif(self):
+        if not self.gif_frames or self.resize_in_progress:
+            return
+
+        self.current_gif_frame = (self.current_gif_frame + 1) % len(self.gif_frames)
+        try:
+            self.avatar_label.configure(image=self.gif_frames[self.current_gif_frame])
+        except tk.TclError:
+            return
+
+        self.animation_job = self.root.after(self.frame_delay, self.animate_gif)
+
+
+    def prepare_gif_frames(self, container_size):
+        self.gif_frames = []
+
+        orig_width, orig_height = self.original_gif.size
+        ratio = min(container_size[0] / orig_width, container_size[1] / orig_height)
+        new_size = (int(orig_width * ratio), int(orig_height * ratio))
+
+        for frame in range(self.original_gif.n_frames):
+            self.original_gif.seek(frame)
+            frame_img = self.original_gif.copy()
+
+            frame_img = frame_img.resize(new_size, PILImage.Resampling.LANCZOS)
+
+            canvas = PILImage.new('RGBA', container_size, (0, 0, 0, 0))
+            position = (
+                (container_size[0] - new_size[0]) // 2,
+                (container_size[1] - new_size[1]) // 2
+            )
+            canvas.paste(frame_img, position)
+
+            self.gif_frames.append(ImageTk.PhotoImage(canvas))
+
+
+    def update_avatar_animation(self):
+        if not self.gif_frames:
+            return
+
+        self.current_gif_frame = (self.current_gif_frame + 1) % len(self.gif_frames)
+        if hasattr(self, 'avatar_label') and self.avatar_label.winfo_exists():
+            try:
+                self.avatar_label.configure(image=self.gif_frames[self.current_gif_frame])
+            except tk.TclError:
+                pass
+
+        delay = self.original_gif.info.get('duration', 100)
+        self.animation_job = self.root.after(delay, self.update_avatar_animation)
 
 
     def load_recipes(self):
@@ -504,12 +670,68 @@ class ReagentCalculatorApp:
         return CustomLoader(stream)
 
 
+    def safe_resize(self, event):
+        if not hasattr(self, 'avatar_container'):
+            return
+
+        if self.resize_in_progress:
+            return
+
+        self.resize_in_progress = True
+
+        if self.animation_job:
+            self.root.after_cancel(self.animation_job)
+            self.animation_job = None
+
+        container_width = self.avatar_container.winfo_width()
+        container_height = self.avatar_container.winfo_height()
+
+        if container_width <= 0 or container_height <= 0:
+            return
+
+        square_size = max(container_width, container_height)
+
+        if square_size != getattr(self, 'current_canvas_size', 0):
+            self.current_canvas_size = square_size
+            self.prepare_gif_frames((square_size, square_size))
+            self.current_gif_frame = 0
+
+            if self.gif_frames:
+                try:
+                    self.avatar_label.configure(image=self.gif_frames[0])
+                except tk.TclError:
+                    pass
+
+
     def create_widgets(self):
         main_frame = tk.Frame(self.root, bg="#2e2e2e")
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(10, 0))
 
         left_panel = tk.Frame(main_frame, bg="#2e2e2e")
         left_panel.pack(side=tk.LEFT, fill=tk.Y, padx=10)
+
+        search_frame = tk.Frame(left_panel, bg="#2e2e2e")
+        search_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(search_frame,
+                text="Поиск",
+                font=("Arial", 13),
+                fg="white",
+                bg="#2e2e2e").pack(anchor=tk.W)
+
+        self.search_entry = ttk.Combobox(
+            search_frame,
+            textvariable=self.search_var,
+            font=("Arial", 13),
+            values=[],
+            state="normal",
+            foreground="white",
+        )
+        self.search_entry.pack(fill=tk.X)
+        self.search_entry.bind("<KeyRelease>", self.on_search_keyrelease)
+        self.search_entry.bind("<<ComboboxSelected>>", self.on_search_select)
+        self.search_entry.bind("<Return>", self.on_search_enter)
+        self.search_entry['values'] = []
 
         self.category_var = tk.StringVar()
         category_frame = tk.Frame(left_panel, bg="#2e2e2e")
@@ -555,8 +777,8 @@ class ReagentCalculatorApp:
         self.settings_btn.pack(side=tk.LEFT, padx=5)
 
         tk.Label(category_frame,
-                text="Выберите категорию:",
-                font=("Arial", 14),
+                text="Категория",
+                font=("Arial", 13),
                 fg="white",
                 bg="#2e2e2e").pack(anchor=tk.W)
 
@@ -574,8 +796,8 @@ class ReagentCalculatorApp:
         recipe_frame.pack(fill=tk.X, pady=5)
 
         tk.Label(recipe_frame,
-                text="Выберите рецепт:",
-                font=("Arial", 14),
+                text="Рецепт",
+                font=("Arial", 13),
                 fg="white",
                 bg="#2e2e2e").pack(anchor=tk.W)
 
@@ -590,7 +812,7 @@ class ReagentCalculatorApp:
         amount_frame.pack(fill=tk.X, pady=5)
 
         tk.Label(amount_frame,
-                 text="Количество продукта:",
+                 text="Количество",
                  font=("Arial", 13),
                  fg="white",
                  bg="#2e2e2e").pack(anchor=tk.W)
@@ -630,37 +852,31 @@ class ReagentCalculatorApp:
         self.avatar_container = tk.Frame(
             left_panel,
             bg="#2e2e2e",
+            width=0,
+            height=0
         )
+        self.avatar_container.pack_propagate(False)
         self.avatar_container.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        if hasattr(self, 'avatar_image') and self.avatar_image:
+        if hasattr(self, 'gif_frames') and self.gif_frames:
             self.avatar_label = tk.Label(
                 self.avatar_container,
-                image=self.avatar_image,
+                image=self.gif_frames[0],
                 bg="#2e2e2e"
             )
-            self.avatar_label.place(relx=0.5, rely=0.5, anchor="center", relwidth=1, relheight=1)
+            self.avatar_label.place(relx=0.5, rely=0.5, anchor="center")
+            self.animate_gif()
 
-            def safe_resize(event):
-                w = event.width
-                h = event.height
-                if w <= 0 or h <= 0:
-                    return
+        self.avatar_container.bind("<Configure>", self.safe_resize)
 
-                size = min(w, h)
-                if size != self.current_avatar_size:
-                    self.current_avatar_size = size
-                    if getattr(sys, 'frozen', False):
-                        avatar_path = os.path.join(sys._MEIPASS, 'img', 'avatar.png')
-                    else:
-                        avatar_path = 'img/avatar.png'
-                    img = PILImage.open(avatar_path)
-                    img.thumbnail((size, size), PILImage.Resampling.LANCZOS)
-                    self.avatar_image = ImageTk.PhotoImage(img)
-                    self.avatar_label.configure(image=self.avatar_image)
-
-            self.current_avatar_size = 0
-            self.avatar_container.bind("<Configure>", safe_resize)
+        if self.gif_frames:
+            self.avatar_label = tk.Label(
+                self.avatar_container,
+                image=self.gif_frames[0],
+                bg="#2e2e2e"
+            )
+            self.avatar_label.place(relx=0.5, rely=0.5, anchor="center")
+            self.update_avatar_animation()
 
         discord_frame = tk.Frame(left_bottom, bg="#2e2e2e")
         discord_frame.pack(side=tk.LEFT, padx=5)
@@ -717,6 +933,7 @@ class ReagentCalculatorApp:
 
 
     def update_recipes_list(self, event=None):
+        current_search = self.search_var.get()
         order = "абвгдеёжзийклмнопрстуфхцчшщъыьэюяabcdefghijklmnopqrstuvwxyz"
         mapping = str.maketrans({ch: chr(1000 + i) for i, ch in enumerate(order)})
         selected_category = self.category_var.get()
@@ -739,6 +956,7 @@ class ReagentCalculatorApp:
             self.recipe_var.set(translated_names[0])
         else:
             self.recipe_var.set('')
+        self.search_var.set(current_search)
 
 
     def update_data_async(self):
@@ -1579,7 +1797,6 @@ class ReagentCalculatorApp:
             style='Red.TButton',
         )
         reset_btn.pack(pady=10)
-
 
 if __name__ == "__main__":
     root = tk.Tk()
