@@ -1,5 +1,13 @@
 # SS14 Химический калькулятор 🧪
 
+## **Public archive**
+**Потерял интерес к игре. В ближайшее время не собираюсь заниматься чем-либо по SS14.** <br>
+***Felinids lives matter***
+
+<br>
+<br>
+<br>
+
 [![GitHub release](https://img.shields.io/github/v/release/R-R0S/ss14-calc?include_prereleases&style=for-the-badge)](https://github.com/R-R0S/ss14-calc/releases/latest)
 [![License](https://img.shields.io/github/license/R-R0S/ss14-calc?style=for-the-badge)](LICENSE)
 
@@ -61,6 +69,6 @@ python main.py
 4. Теперь в оверлее будет дублироваться рецепт из основного окна (Вы так же можете прокручивать оверлей колёсиком мыши)
 
 ### Проблемы
-Это кто-то вообще читает?
- * Если вы столкнулись с проблемой, можете написать мне в [дискорд](https://discord.com/users/317692089355862016) или в [issue](https://github.com/R-R0S/ss14-calc/issues) на [гитхаб](https://github.com/R-R0S/ss14-calc)
+*Это кто-то вообще читает?*
+ * ~~Если вы столкнулись с проблемой, можете написать мне в [дискорд](https://discord.com/users/317692089355862016) или в [issue](https://github.com/R-R0S/ss14-calc/issues) на [гитхаб](https://github.com/R-R0S/ss14-calc)~~
  * Если я вам не ответил, значит я занят или мне плевать
