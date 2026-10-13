@@ -7,21 +7,24 @@ _CORVAX = 'https://raw.githubusercontent.com/space-syndicate/space-station-14/re
 _SS220 = 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/refs/heads/master/Resources'
 _MONOLITH = 'https://raw.githubusercontent.com/SerbiaStrong-220/Monolith/refs/heads/master/Resources'
 
-# Рецепты ванильной игры — заводской набор (пресет Default). Категория —
-# имя файла, как в игре.
+# Рецепты ванильной игры — Default.
 BASE_RECIPE_CATEGORIES = {
-    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/biological.yml',
+    'Остальное': (
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/biological.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/gas.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/single_reagent.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/soap.yml',
+    ),
     'Ботаника': f'{_WIZARDS}/Prototypes/Recipes/Reactions/botany.yml',
-    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/chemicals.yml',
-    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/cleaning.yml',
+    'Химикаты': (
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/chemicals.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/cleaning.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/fun.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+    ),
     'Напитки': f'{_WIZARDS}/Prototypes/Recipes/Reactions/drinks.yml',
     'Еда': f'{_WIZARDS}/Prototypes/Recipes/Reactions/food.yml',
-    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/fun.yml',
-    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/gas.yml',
     'Медикаменты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/medicine.yml',
-    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
-    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/single_reagent.yml',
-    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/soap.yml',
 }
 
 # Переводы для базовых рецептов — русская локаль Corvax.

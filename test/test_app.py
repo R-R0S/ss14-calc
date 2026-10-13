@@ -812,10 +812,11 @@ def test_presets(app, win):
     check(os.path.isdir(os.path.join('presets', 'Default')),
           'every built-in preset gets its folder')
     default = logic.read_preset('Default')
-    check(default['custom_recipes'] == {
-        win.base_recipe_labels[stem]: url
-        for stem, url in win.base_recipe_categories.items()},
-        'the Default preset holds the factory links by category')
+    check(default['custom_recipes']
+          == logic.preset_content(win.base_recipe_categories,
+                                  win.base_translation_files,
+                                  win.base_recipe_labels)['custom_recipes'],
+          'the Default preset holds the factory links by category')
     check(default['custom_translations'] == list(win.base_translation_files.values()),
           'the Default preset holds the factory translation links')
     for name in ('Corvax', 'SS220 Exodus', 'SS220 Main'):
@@ -1014,12 +1015,13 @@ def test_reset(app, win):
     check(win.presets == list(BUILTIN_PRESETS), 'the preset list is back to the built-ins')
     check(not os.path.exists(os.path.join('presets', 'backup')),
           'the preset folders are recreated from scratch')
-    check(logic.read_preset('Default')['custom_recipes'] == {
-        win.base_recipe_labels[stem]: url
-        for stem, url in win.base_recipe_categories.items()},
-        'the Default preset holds the factory links again')
+    check(logic.read_preset('Default')['custom_recipes']
+          == logic.preset_content(win.base_recipe_categories,
+                                  win.base_translation_files,
+                                  win.base_recipe_labels)['custom_recipes'],
+          'the Default preset holds the factory links again')
     check(os.path.isdir('recipes') and os.path.isdir('translations'), 'data folders exist again')
-    check(win.category_combo.count() == len(win.base_recipe_categories),
+    check(win.category_combo.count() == len(set(win.base_recipe_labels.values())),
           'the category box shows the default sources')
     check(win.recipe_combo.count() == 0, 'no recipes remain after the reset')
 
