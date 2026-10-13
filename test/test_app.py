@@ -30,6 +30,12 @@ from data import (BASE_RECIPE_CATEGORIES, BASE_TRANSLATION_URLS,
 FAILURES = []
 MODAL_LOG = []
 
+# QCompleter's popup view has no C++ parent, so Shiboken treats it as owned
+# by the Python wrapper and deletes the C++ view with the wrapper, while
+# QCompleter still points at it.  The wrappers obtained below are kept for
+# the whole run.
+POPUP_REFS = []
+
 
 def check(condition, message):
     if condition:
@@ -335,6 +341,56 @@ def test_search(app, win):
     stop_sweeper(sweeper)
     check(win.result_text.toPlainText() != '', 'a nonsense query still calculates')
     check(not MODAL_LOG, 'a nonsense query raises no error')
+
+
+def popup_dominant_color(widget, step=4):
+    """Most frequent rendered colour of *widget* as an (r, g, b) tuple."""
+    image = widget.grab().toImage()
+    counts = {}
+    for y in range(0, image.height(), step):
+        for x in range(0, image.width(), step):
+            color = image.pixelColor(x, y)
+            key = (color.red(), color.green(), color.blue())
+            counts[key] = counts.get(key, 0) + 1
+    return max(counts, key=counts.get)
+
+
+def popup_frame_is_dark(widget):
+    """True when no near-white pixel sits in the outermost popup rows."""
+    image = widget.grab().toImage()
+    edge = []
+    for offset in range(3):
+        edge += [image.pixelColor(x, offset) for x in range(image.width())]
+        edge += [image.pixelColor(offset, y) for y in range(image.height())]
+    return all(min(color.red(), color.green(), color.blue()) < 200 for color in edge)
+
+
+def test_popup_styles(app, win):
+    """Every popup paints its own dark background, not the system theme."""
+    print('popup styles')
+
+    win.category_combo.showPopup()
+    app.processEvents()
+    combo_popup = win.category_combo.view().window()
+    check(min(popup_dominant_color(combo_popup)) < 100, 'combo popup list is dark')
+    check(popup_frame_is_dark(combo_popup), 'combo popup frame is dark')
+    win.category_combo.hidePopup()
+
+    win.search_edit.setText('дифен')
+    app.processEvents()
+    # grab() renders the popup view even while it is hidden, so the suite
+    # never has to show a real completer popup.
+    completer_popup = win.search_completer.popup()
+    check(min(popup_dominant_color(completer_popup)) < 100, 'search popup list is dark')
+    check(popup_frame_is_dark(completer_popup), 'search popup frame is dark')
+    POPUP_REFS.append(completer_popup)
+
+    # The recipe choice menu from on_result_link(): grab() paints it hidden.
+    menu = QtWidgets.QMenu(win)
+    for label in ('Первый вариант', 'Второй вариант'):
+        menu.addAction(label).setCheckable(True)
+    check(min(popup_dominant_color(menu)) < 100, 'recipe choice menu is dark')
+    check(popup_frame_is_dark(menu), 'recipe choice menu frame is dark')
 
 
 def test_calculation(app, win):
@@ -1158,8 +1214,8 @@ def run_suite():
     win.show()
     app.processEvents()
 
-    steps = (test_startup, test_data_py, test_search, test_calculation,
-             test_reagent_recipe_choice, test_overlay,
+    steps = (test_startup, test_data_py, test_search, test_popup_styles,
+             test_calculation, test_reagent_recipe_choice, test_overlay,
              test_settings, test_update_flow, test_presets, test_reset, test_close)
     for step in steps:
         try:
@@ -1182,11 +1238,18 @@ def main():
     original_cwd = os.getcwd()
     workdir = make_workdir()
     try:
-        return run_suite()
+        code = run_suite()
     finally:
         os.chdir(original_cwd)
         shutil.rmtree(workdir, ignore_errors=True)
+    # The interpreter shutdown races inside PySide6/Qt when the suite has
+    # rendered popup widgets (the crash is in Qt's own destruction order,
+    # not in the application code), so the process stops right here and
+    # that teardown is skipped entirely.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    main()

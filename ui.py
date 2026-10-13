@@ -35,10 +35,37 @@ QComboBox::drop-down { border: none; width: 18px; }
 QComboBox QAbstractItemView {
     background-color: #4f4f4f;
     color: #ffffff;
+    border: none;
+    selection-background-color: #1e7e34;
+    selection-color: #ffffff;
+}
+QComboBox QAbstractItemView::item { background-color: #4f4f4f; color: #ffffff; }
+QComboBox QAbstractItemView::item:selected { background-color: #1e7e34; }
+/* The combo popup is a top-level QComboBoxPrivateContainer window: without
+   its own rule the native style draws a light frame around the dark list. */
+QComboBoxPrivateContainer {
+    background-color: #4f4f4f;
+    border: 1px solid #454545;
+}
+QListView {
+    background-color: #4f4f4f;
+    color: #ffffff;
     border: 1px solid #454545;
     selection-background-color: #1e7e34;
     selection-color: #ffffff;
 }
+QListView::item { background-color: #4f4f4f; color: #ffffff; }
+QListView::item:selected { background-color: #1e7e34; }
+QListView::item:hover { background-color: #5e5e5e; }
+QMenu {
+    background-color: #454545;
+    color: #ffffff;
+    border: 1px solid #5e5e5e;
+}
+QMenu::item { background-color: #454545; color: #ffffff; padding: 4px 24px; }
+QMenu::item:selected { background-color: #1e7e34; }
+QMenu::item:disabled { color: #909090; }
+QMenu::separator { background: #5e5e5e; height: 1px; margin: 2px 6px; }
 QTextEdit, QPlainTextEdit, QTextBrowser {
     background-color: #3c3c3c;
     color: #ffffff;
@@ -70,10 +97,39 @@ QPushButton {
     padding: 6px 12px;
 }
 QPushButton:hover { background-color: #5e5e5e; }
-QPushButton:pressed { background-color: #1e7e34; }
+QPushButton:pressed { background-color: #3c3c3c; }
 QPushButton:disabled { background-color: #3c3c3c; color: #909090; }
+/* The Tk main window drew its classic tk.Button widgets with a raised
+   relief: a light top-left edge over a dark bottom-right one.  Buttons of
+   dialogs were flat ttk widgets and stay flat here. */
+QMainWindow QPushButton {
+    border-width: 1px;
+    border-style: solid;
+    border-color: #5e5e5e #2b2b2b #2b2b2b #5e5e5e;
+}
+QMainWindow QPushButton:pressed {
+    border-color: #2b2b2b #5e5e5e #5e5e5e #2b2b2b;
+}
+QPushButton#calculate_button {
+    background-color: #1e7e34;
+    border-color: #3aa757 #14532d #14532d #3aa757;
+}
+QPushButton#calculate_button:hover { background-color: #239243; }
+QPushButton#calculate_button:pressed {
+    background-color: #175c2b;
+    border-color: #14532d #3aa757 #3aa757 #14532d;
+}
+QPushButton#update_button {
+    background-color: #0067a1;
+    border-color: #2f92cc #003f66 #003f66 #2f92cc;
+}
+QPushButton#update_button:hover { background-color: #0a7ab8; }
+QPushButton#update_button:pressed {
+    background-color: #005178;
+    border-color: #003f66 #2f92cc #2f92cc #003f66;
+}
 QPushButton#links_mode_button:checked { background-color: #1e7e34; }
-QPushButton#discord_button { background: transparent; padding: 0; }
+QPushButton#discord_button { background: transparent; padding: 0; border: none; }
 QPushButton#discord_button:hover { background: rgba(255, 255, 255, 40); border-radius: 4px; }
 QProgressBar {
     background-color: #454545;
@@ -88,10 +144,12 @@ QTabWidget::pane { border: 1px solid #454545; top: -1px; }
 QTabBar::tab {
     background-color: #2e2e2e;
     color: #ffffff;
+    border: 1px solid #454545;
     padding: 6px 14px;
     margin-right: 2px;
 }
-QTabBar::tab:selected { background-color: #1e7e34; }
+/* The open tab keeps no bottom edge, so it merges with the pane below it. */
+QTabBar::tab:selected { border-bottom: none; }
 QGroupBox {
     color: #ffffff;
     border: 1px solid #454545;
@@ -207,10 +265,12 @@ def init_ui(self):
     btn_row = QtWidgets.QHBoxLayout()
     left_v.addLayout(btn_row)
     self.calculate_btn = QtWidgets.QPushButton('Рассчитать')
+    self.calculate_btn.setObjectName('calculate_button')
     self.calculate_btn.clicked.connect(self.calculate_reactants)
     btn_row.addWidget(self.calculate_btn)
 
     self.update_btn = QtWidgets.QPushButton('Обновить данные')
+    self.update_btn.setObjectName('update_button')
     self.update_btn.clicked.connect(self.update_data_async)
     btn_row.addWidget(self.update_btn)
 
