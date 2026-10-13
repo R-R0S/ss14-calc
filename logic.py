@@ -148,6 +148,12 @@ def load_recipes(app):
 
     app.recipe_dict = {recipe['id']: recipe for recipe in app.recipes}
     app.recipes.sort(key=lambda recipe: recipe['id'].lower())
+    # product reagent -> every recipe id that yields it (several recipes may
+    # produce the same reagent; the resolver offers a choice between them)
+    app.recipes_by_product = {}
+    for recipe in app.recipes:
+        for product in (recipe.get('products') or {}):
+            app.recipes_by_product.setdefault(product, []).append(recipe['id'])
     # Configured labels first (several files may share one label), then the
     # labels that only exist as local files.
     ordered = []
@@ -443,12 +449,41 @@ def update_data(app):
         app.data_update_finished.emit(report)
 
 
+def chosen_recipe_id(app, reagent):
+    """Return the recipe used to expand *reagent*, or ``None`` if it has none.
+
+    The default is the recipe whose id matches the reagent; an explicit
+    override wins when it names a recipe that actually yields the reagent.
+    """
+    override = (app.reagent_recipe_overrides or {}).get(reagent)
+    if override in app.recipes_by_product.get(reagent, ()):
+        return override
+    if reagent in app.recipe_dict:
+        return reagent
+    return None
+
+
+def recipe_choices(app, reagent):
+    """Return ``[(recipe_id, label)]`` for every recipe that yields *reagent*.
+
+    Labels follow the header normalisation, so each entry reads like the same
+    recipe would at the top of its own calculation.
+    """
+    choices = []
+    for recipe_id in app.recipes_by_product.get(reagent, ()):
+        label = app.translations.get(recipe_id.lower().replace(' ', ''), recipe_id)
+        choices.append((recipe_id, label))
+    return choices
+
+
 def resolve_reactants(app, recipe_id, amount_needed, depth=0,
                       target_product=None, include_header=True, visited=None):
-    """Yield ``(text, colour)`` lines for *recipe_id* and all of its reactants.
+    """Yield ``(text, colour, link)`` lines for *recipe_id* and its reactants.
 
     The reaction tree is walked depth first, so the caller only has to render
-    the yielded lines in order to reproduce the original output.
+    the yielded lines in order to reproduce the original output.  ``link`` is
+    ``None`` for plain lines, or ``(anchor_text, reagent_id)`` for a reagent
+    that has several recipes and can be re-chosen by the user.
     """
     if visited is None:
         visited = set()
@@ -458,7 +493,7 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
 
     recipe = app.recipe_dict.get(recipe_id)
     if recipe is None:
-        yield f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден", colour
+        yield f"{'  ' * depth}Ошибка: Рецепт {recipe_id} не найден", colour, None
         return
 
     products = recipe.get('products', {})
@@ -500,28 +535,34 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
             header += f"(мин. темп:{recipe['minTemp']}K)"
         if reactants:
             header += ':'
-        yield header, colour
+        yield header, colour, None
 
     for reactant, info in reactants.items():
         is_catalyst = info.get('catalyst', False)
         final_amount = info.get('amount', 0) * (multiplier if not is_catalyst else 1)
         normalized_reactant = reactant.lower().replace(' ', '').replace('-', '')
-        line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {app.translations.get(normalized_reactant, reactant)}"
+        name = app.translations.get(normalized_reactant, reactant)
+        line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {name}"
 
-        if reactant in app.recipe_dict:
-            component_recipe = app.recipe_dict[reactant]
+        chosen = chosen_recipe_id(app, reactant)
+        if chosen is not None:
+            component_recipe = app.recipe_dict[chosen]
             if 'minTemp' in component_recipe:
                 line += f" [р](мин. темп:{component_recipe['minTemp']}K)"
             else:
                 line += ' [р]'
         if is_catalyst:
             line += ' (катализатор)'
-        yield line, colour
 
-        if reactant in app.recipe_dict and reactant not in visited:
+        link = None
+        if chosen is not None and len(app.recipes_by_product.get(reactant, ())) > 1:
+            link = (name, reactant)
+        yield line, colour, link
+
+        if chosen is not None and reactant not in visited:
             yield from resolve_reactants(
                 app,
-                recipe_id=reactant,
+                recipe_id=chosen,
                 amount_needed=final_amount,
                 depth=depth + 1,
                 target_product=reactant,
@@ -535,7 +576,7 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
             normalized_product = product.lower().replace(' ', '').replace('-', '')
             parts.append(f"{format_amount(amount * multiplier)} {app.translations.get(normalized_product, product)}")
         if parts:
-            yield f"{'  ' * (depth + 1)}{title}: {' + '.join(parts)}", colour
+            yield f"{'  ' * (depth + 1)}{title}: {' + '.join(parts)}", colour, None
 
     def effect_lines():
         effects_text = []
@@ -553,7 +594,7 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
                 details.append(f"ЭМИ радиус: {effect.get('maxRange', 0)}м")
             effects_text.append(f"{effect_type} ({'; '.join(details)})" if details else effect_type)
         if effects_text:
-            yield f"{'  ' * (depth + 1)}Эффекты: {' | '.join(effects_text)}", colour
+            yield f"{'  ' * (depth + 1)}Эффекты: {' | '.join(effects_text)}", colour, None
 
     if is_electrolysis and products:
         yield from product_lines('Продукты электролиза')

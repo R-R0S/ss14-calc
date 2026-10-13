@@ -39,7 +39,7 @@ QComboBox QAbstractItemView {
     selection-background-color: #1e7e34;
     selection-color: #ffffff;
 }
-QTextEdit, QPlainTextEdit {
+QTextEdit, QPlainTextEdit, QTextBrowser {
     background-color: #3c3c3c;
     color: #ffffff;
     border: 1px solid #454545;
@@ -128,7 +128,7 @@ OVERLAY_STYLE = """
     border-bottom: 1px solid rgba(255, 255, 255, 60);
 }
 QLabel { color: #ffffff; background: transparent; }
-QTextEdit#overlay_content {
+QTextBrowser#overlay_content {
     background: transparent;
     color: #ffffff;
     border: none;
@@ -221,8 +221,11 @@ def init_ui(self):
     right_v = QtWidgets.QVBoxLayout()
     main_layout.addLayout(right_v, 1)
 
-    self.result_text = QtWidgets.QTextEdit()
+    self.result_text = QtWidgets.QTextBrowser()
+    self.result_text.setOpenLinks(False)  # anchorClicked handles the links
+    self.result_text.setOpenExternalLinks(False)
     self.result_text.setReadOnly(True)
+    self.result_text.anchorClicked.connect(self.on_result_link)
     right_v.addWidget(self.result_text)
 
     self.progress_bar = QtWidgets.QProgressBar()
@@ -422,8 +425,10 @@ class OverlayWidget(QtWidgets.QWidget):
         title_layout.addWidget(close_button)
         layout.addWidget(self.title_bar)
 
-        self.content = QtWidgets.QTextEdit(self)
+        self.content = QtWidgets.QTextBrowser(self)
         self.content.setObjectName('overlay_content')
+        self.content.setOpenLinks(False)  # anchorClicked handles the links
+        self.content.setOpenExternalLinks(False)
         self.content.setReadOnly(True)
         layout.addWidget(self.content, 1)
 
@@ -570,6 +575,9 @@ def create_overlay_window(self):
     apply_overlay_opacity(overlay, self.overlay_opacity)
     overlay.closed.connect(self.toggle_overlay)
     overlay.destroyed.connect(lambda *_args: forget_overlay(self))
+    # The overlay mirrors the result, links included, so it offers the same
+    # recipe choice as the main window.
+    overlay.content.anchorClicked.connect(self.on_result_link)
 
     self.overlay_window = overlay
     self.overlay_content = overlay.content

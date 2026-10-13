@@ -147,6 +147,36 @@ def stop_sweeper(state):
     state['timer'].stop()
 
 
+def start_popup_sweeper(app, label):
+    """Click the action labelled *label* as soon as a menu pops up.
+
+    A ``QMenu`` is a popup, not a modal, so ``activeModalWidget`` never sees
+    it; the click is deferred by one loop pass for the same reason as above.
+    The menu is hidden afterwards: the actions are checkable, and triggering
+    one of those toggles it without closing the popup, which would leave
+    ``QMenu.exec`` running forever.
+    """
+    state = {'done': False}
+
+    def sweep():
+        if state['done']:
+            return
+        menu = app.activePopupWidget()
+        if not isinstance(menu, QtWidgets.QMenu):
+            return
+        for action in menu.actions():
+            if action.text() == label:
+                state['done'] = True
+                QtCore.QTimer.singleShot(0, lambda a=action, m=menu: (a.trigger(), m.hide()))
+                return
+
+    timer = QtCore.QTimer()
+    timer.timeout.connect(sweep)
+    timer.start(20)
+    state['timer'] = timer
+    return state
+
+
 # --------------------------------------------------------------- test steps
 
 def test_startup(app, win):
@@ -362,6 +392,53 @@ def test_calculation(app, win):
               f'the catalyst recipe is expanded below its line ({len(nested)} lines)')
 
 
+def test_reagent_recipe_choice(app, win):
+    print('reagent recipe choice')
+    win.category_combo.setCurrentIndex(win.category_combo.findText('medicine'))
+    app.processEvents()
+    index = win.recipe_combo.findText('Гамма-препарат')
+    check(index >= 0, 'the gamma recipe is present in medicine')
+    if index < 0:
+        return
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('90')
+    win.calculate_reactants()
+
+    # Дифенгидрамин теперь имеет два рецепта: имя становится ссылкой, но
+    # обычный текст результата остаётся прежним.
+    check('reagent:Diphenhydramine' in win.result_text.toHtml(),
+          'the reagent with two recipes carries a link')
+    text = win.result_text.toPlainText()
+    check('Дифенгидрамин' in text and '[р]' in text,
+          'the linked reagent keeps its name and the [р] tag')
+    check('Сера' in text, 'the default recipe is expanded by default')
+
+    choices = dict(logic.recipe_choices(win, 'Diphenhydramine'))
+    check(set(choices) == {'Diphenhydramine', 'DiphenhydramineFromEthanol'},
+          f'both recipes are offered ({sorted(choices)})')
+    check(choices['Diphenhydramine'] == 'Дифенгидрамин',
+          f'the labels read like the recipe headers ({choices})')
+
+    win.choose_reagent_recipe('Diphenhydramine', 'DiphenhydramineFromEthanol')
+    text = win.result_text.toPlainText()
+    check('720' in text and 'Сера' not in text,
+          'the alternative recipe drives the tree (720 Этанол, no sulfur)')
+    check(win.reagent_recipe_overrides == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+          'the choice is remembered on the window')
+
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check(saved['reagent_recipe_overrides']
+          == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+          'the choice is written to settings.cfg')
+
+    # Выбор рецепта по умолчанию убирает переопределение целиком.
+    win.choose_reagent_recipe('Diphenhydramine', 'Diphenhydramine')
+    check(win.reagent_recipe_overrides == {}, 'the default recipe clears the override')
+    check('Сера' in win.result_text.toPlainText(), 'the default recipe is back')
+
+
 def test_overlay(app, win):
     print('overlay')
     win.calculate_reactants()
@@ -375,6 +452,24 @@ def test_overlay(app, win):
     check(overlay.minimumSize() == QtCore.QSize(200, 150), 'minimum size matches the Tk app')
     check(overlay.content.toPlainText() == win.result_text.toPlainText(),
           'overlay mirrors the current result')
+
+    # Оверлей показывает те же ссылки и offers the same recipe choice.
+    check(isinstance(overlay.content, QtWidgets.QTextBrowser),
+          'the overlay content is a link-aware text browser')
+    check('reagent:Diphenhydramine' in overlay.content.toHtml(),
+          'the overlay carries the recipe links')
+    sweeper = start_popup_sweeper(app, 'DiphenhydramineFromEthanol')
+    overlay.content.anchorClicked.emit(QtCore.QUrl('reagent:Diphenhydramine'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.reagent_recipe_overrides
+          == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+          'a click in the overlay picks the alternative recipe')
+    check('720' in overlay.content.toPlainText(),
+          'the overlay shows the newly chosen recipe')
+    # Убрать выбор, чтобы остальные тесты видели состояние по умолчанию.
+    win.choose_reagent_recipe('Diphenhydramine', 'Diphenhydramine')
+    check(win.reagent_recipe_overrides == {}, 'the overlay override is cleared again')
     # the window background carries the alpha on every platform
     check(background_alpha(overlay) == round(win.overlay_opacity * 255),
           'the overlay paints its background')
@@ -736,8 +831,10 @@ def test_settings(app, win):
         saved = json.load(handle)
     check(set(saved) == {'config_version', 'opacity', 'language', 'depth_colors',
                          'custom_recipes', 'custom_translations',
-                         'recipe_file_categories', 'presets'},
-          'settings.cfg keeps the Tk format plus the version, the labels and the presets')
+                         'recipe_file_categories', 'reagent_recipe_overrides',
+                         'presets'},
+          'settings.cfg keeps the Tk format plus the version, the labels, the overrides and the presets')
+    check(saved['reagent_recipe_overrides'] == {}, 'no reagent override is written by default')
     check(saved['config_version'] == 1, 'the config carries its format version')
     check(saved['depth_colors'] == win.depth_colors, 'colours are written to disk')
 
@@ -1061,7 +1158,8 @@ def run_suite():
     win.show()
     app.processEvents()
 
-    steps = (test_startup, test_data_py, test_search, test_calculation, test_overlay,
+    steps = (test_startup, test_data_py, test_search, test_calculation,
+             test_reagent_recipe_choice, test_overlay,
              test_settings, test_update_flow, test_presets, test_reset, test_close)
     for step in steps:
         try:

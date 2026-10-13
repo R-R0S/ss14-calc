@@ -37,6 +37,34 @@ _HEX_COLOR = re.compile(r'^#[0-9a-fA-F]{6}$')
 _TRAILING_CATEGORY = re.compile(r'\s*\([^()]*\)\s*$')
 
 
+def build_result_html(lines):
+    """Turn yielded ``(text, colour, link)`` lines into the result document.
+
+    ``white-space: pre-wrap`` keeps the per depth indentation (HTML would
+    collapse it) while still wrapping long lines, like the Tk text widget.  A
+    reagent carrying a link becomes an anchor around its own name only, so the
+    surrounding amounts and ``[р]`` markers stay plain text.
+    """
+    html = []
+    for text, colour, link in lines:
+        body = escape(text)
+        if link:
+            anchor_text, reagent_id = link
+            anchor = escape(anchor_text)
+            # Anchor the reagent name at its first (and only) occurrence.
+            body = body.replace(
+                anchor,
+                f'<a href="reagent:{escape(reagent_id)}" '
+                f'style="color: {colour}; text-decoration: underline;">{anchor}</a>',
+                1,
+            )
+        html.append(
+            f'<div style="color: {colour}; font-family: monospace; '
+            f'white-space: pre-wrap;">{body}</div>\n'
+        )
+    return ''.join(html)
+
+
 class ReagentCalculatorQt(QtWidgets.QMainWindow):
     """Main window: search, calculation, overlay and settings."""
 
@@ -65,12 +93,16 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         self.recipes = []
         self.recipe_dict = {}
         self.recipe_map = {}
+        # product reagent -> [recipe ids] (several recipes may yield one reagent)
+        self.recipes_by_product = {}
         self.translations = {}
 
         # settings
         self.overlay_opacity = DEFAULT_OPACITY
         self.language = DEFAULT_LANGUAGE
         self.depth_colors = list(DEFAULT_DEPTH_COLORS)
+        # reagent -> recipe id chosen for it over the default one
+        self.reagent_recipe_overrides = {}
         # preset names in their shown order; the files live in presets/
         self.presets = []
         # format version of the settings.cfg read at startup
@@ -238,16 +270,46 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         scrollbar = self.result_text.verticalScrollBar()
         scroll_position = scrollbar.value()
         lines = logic.resolve_reactants(self, recipe_id=recipe_id, amount_needed=amount)
-        # ``white-space: pre-wrap`` keeps the per depth indentation (HTML would
-        # collapse it) while still wrapping long lines, like the Tk text widget.
-        html = ''.join(
-            f'<div style="color: {colour}; font-family: monospace; white-space: pre-wrap;">'
-            f'{escape(text)}</div>\n'
-            for text, colour in lines
-        )
-        self.result_text.setHtml(html)
+        self.result_text.setHtml(build_result_html(lines))
         scrollbar.setValue(scroll_position)
         ui.update_overlay_content(self)
+
+    def on_result_link(self, url):
+        """Offer the alternative recipes of the clicked reagent."""
+        if url.scheme() != 'reagent':
+            return
+        reagent = url.path()
+        choices = logic.recipe_choices(self, reagent)
+        if len(choices) < 2:
+            return
+        # Parent the menu to the pane that was clicked: the overlay stays on
+        # top, so a menu owned by the main window would open behind it.
+        source = self.sender()
+        menu = QtWidgets.QMenu(source if source is not None else self)
+        current = logic.chosen_recipe_id(self, reagent)
+        for recipe_id, label in choices:
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(recipe_id == current)
+            # The choice rides the action itself, not on exec()'s return
+            # value: a checkable action does not close the popup, so exec()
+            # may well yield nothing after the click.  The recalculation is
+            # deferred by one loop pass so it never runs inside the menu's own
+            # nested event loop.
+            action.triggered.connect(
+                lambda _checked=False, picked=recipe_id:
+                    QtCore.QTimer.singleShot(
+                        0, lambda: self.choose_reagent_recipe(reagent, picked)))
+        menu.exec(QtGui.QCursor.pos())
+
+    def choose_reagent_recipe(self, reagent, recipe_id):
+        """Remember the recipe picked for *reagent* and recalculate."""
+        if recipe_id == reagent:
+            self.reagent_recipe_overrides.pop(reagent, None)
+        else:
+            self.reagent_recipe_overrides[reagent] = recipe_id
+        self.save_settings()
+        self.calculate_reactants()
 
     # --------------------------------------------------------------- overlay
 
@@ -325,6 +387,7 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             'custom_recipes': dict(self.custom_recipe_links),
             'custom_translations': dict(self.custom_translation_links),
             'recipe_file_categories': dict(self.recipe_file_categories),
+            'reagent_recipe_overrides': dict(self.reagent_recipe_overrides),
             'presets': list(self.presets),
         }
         try:
@@ -353,6 +416,8 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             self.overlay_opacity = _read_opacity(settings.get('opacity'))
             self.language = settings.get('language', DEFAULT_LANGUAGE)
             self.depth_colors = _read_colors(settings.get('depth_colors'))
+            self.reagent_recipe_overrides = _read_overrides(
+                settings.get('reagent_recipe_overrides'))
             self.custom_recipe_links = settings.get('custom_recipes') or dict(self.base_recipe_categories)
             self.custom_translation_links = settings.get('custom_translations') \
                 or dict(self.base_translation_files)
@@ -403,6 +468,7 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             self.overlay_opacity = DEFAULT_OPACITY
             self.language = DEFAULT_LANGUAGE
             self.depth_colors = list(DEFAULT_DEPTH_COLORS)
+            self.reagent_recipe_overrides = {}
             self.custom_recipe_links = dict(self.base_recipe_categories)
             self.custom_translation_links = dict(self.base_translation_files)
             self.recipe_file_categories = dict(self.base_recipe_labels)
@@ -544,6 +610,14 @@ def _read_colors(values):
     """Return the six depth colours, padded with defaults when necessary."""
     valid = [value for value in (values or []) if isinstance(value, str) and _HEX_COLOR.match(value)]
     return (valid + list(DEFAULT_DEPTH_COLORS))[:6]
+
+
+def _read_overrides(values):
+    """Return the reagent -> recipe mapping, dropping malformed entries."""
+    if not isinstance(values, dict):
+        return {}
+    return {reagent: recipe_id for reagent, recipe_id in values.items()
+            if isinstance(reagent, str) and isinstance(recipe_id, str)}
 
 
 def main():

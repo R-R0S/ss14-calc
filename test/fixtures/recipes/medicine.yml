@@ -52,3 +52,13 @@
       amount: 1
   products:
     SulfuricAcid: 1
+
+# Второй рецепт Дифенгидрамина: реагент становится неоднозначным, и калькулятор
+# предлагает выбрать рецептуру прямо в дереве.
+- type: reaction
+  id: DiphenhydramineFromEthanol
+  reactants:
+    Ethanol:
+      amount: 8
+  products:
+    Diphenhydramine: 1

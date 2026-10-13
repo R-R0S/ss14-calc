@@ -94,6 +94,7 @@ BUILTIN_PRESETS = {
                 f'{_MONOLITH}/Prototypes/_Exodus/Recipes/Reactions/medicine.yml',
                 f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/medicine.yml',
                 f'{_MONOLITH}/Prototypes/_NF/Recipes/Reactions/medicine.yml',
+                f'{_MONOLITH}/Prototypes/_Exodus/Virology/chemistry.yml',
             ),
             'Химикаты': (
                 f'{_MONOLITH}/Prototypes/Recipes/Reactions/chemicals.yml',
@@ -154,6 +155,8 @@ BUILTIN_PRESETS = {
             f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/drink/drinks.ftl',
             f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/food/food.ftl',
             f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/food/ingredients.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Exodus/virology/virology.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Exodus/virology/integration.ftl',
         ),
     },
     'SS220 Main': {
