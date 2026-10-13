@@ -1,0 +1,10 @@
+# Идентификатор с суффиксом Drink: калькулятор отрезает его при загрузке.
+- type: reaction
+  id: JuiceDrink
+  reactants:
+    Water:
+      amount: 1
+    Nutriment:
+      amount: 1
+  products:
+    Juice: 1

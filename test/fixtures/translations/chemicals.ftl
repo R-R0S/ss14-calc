@@ -1,0 +1,10 @@
+reagent-name-steel = Сталь
+reagent-desc-steel = Тестовая простая реакция без рекурсии.
+reagent-name-flash-powder = Флеш-порошок
+reagent-desc-flash-powder = Тестовая реакция категории pyrotechnic.
+reagent-name-juice = Фруктовый сок
+reagent-desc-juice = Рецепта с id, оканчивающимся на Drink.
+reagent-name-iron = Железо
+reagent-name-aluminum = Алюминий
+reagent-name-potassium = Калий
+reagent-name-nutriment = Питание

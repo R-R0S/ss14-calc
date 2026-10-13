@@ -1,35 +1,210 @@
 # Centralized static data/constants for the Qt application
 APP_TITLE = 'SS14 Химический калькулятор by i_love_Megumin'
 
+# Корни репозиториев
+_WIZARDS = 'https://raw.githubusercontent.com/space-wizards/space-station-14/refs/heads/master/Resources'
+_CORVAX = 'https://raw.githubusercontent.com/space-syndicate/space-station-14/refs/heads/master/Resources'
+_SS220 = 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/refs/heads/master/Resources'
+_MONOLITH = 'https://raw.githubusercontent.com/SerbiaStrong-220/Monolith/refs/heads/master/Resources'
+
+# Рецепты ванильной игры — заводской набор (пресет Default). Категория —
+# имя файла, как в игре.
 BASE_RECIPE_CATEGORIES = {
-    'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/medicine.yml',
-    'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/chemicals.yml',
-    'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/c107ced0a8a8090cd0e1b32f68b79cc7ca431420/Resources/Prototypes/Recipes/Reactions/pyrotechnic.yml',
-    'drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/Recipes/Reactions/drinks.yml',
-    'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/9fad48b5ffce66ea9fa00e3b7a1f29658dba6657/Resources/Prototypes/SS220/Recipes/Reactions/medicine.yml',
-    'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/a5444e854b78c6cc09a653f550c82c9a72f26e68/Resources/Prototypes/SS220/Recipes/Reactions/drinks.yml'
+    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/biological.yml',
+    'Ботаника': f'{_WIZARDS}/Prototypes/Recipes/Reactions/botany.yml',
+    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/chemicals.yml',
+    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/cleaning.yml',
+    'Напитки': f'{_WIZARDS}/Prototypes/Recipes/Reactions/drinks.yml',
+    'Еда': f'{_WIZARDS}/Prototypes/Recipes/Reactions/food.yml',
+    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/fun.yml',
+    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/gas.yml',
+    'Медикаменты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/medicine.yml',
+    'Химикаты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/single_reagent.yml',
+    'Остальное': f'{_WIZARDS}/Prototypes/Recipes/Reactions/soap.yml',
 }
 
-BASE_TRANSLATION_FILES = {
-    'medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/medicine.ftl',
-    'chemicals': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/chemicals.ftl',
-    'pyrotechnic': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
-    'biological': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/biological.ftl',
-    'botany': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/botany.ftl',
-    'cleaning': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/cleaning.ftl',
-    'elements': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/elements.ftl',
-    'fun': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/fun.ftl',
-    'gases': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/gases.ftl',
-    'narcotics': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/narcotics.ftl',
-    'toxins': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/toxins.ftl',
-    'alcohol': 'https://raw.githubusercontent.com/space-syndicate/space-station-14/c5fffb0b73c7f5c11e41b3996a41a2722c978ab4/Resources/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
-    'drinks': 'https://raw.githubusercontent.com/space-syndicate/space-station-14/c5fffb0b73c7f5c11e41b3996a41a2722c978ab4/Resources/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
-    'juice': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
-    'soda': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
-    'ingredients': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
-    'ss220 drinks': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/drinks.ftl',
-    'condiments': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
-    'ss220 medicine': 'https://raw.githubusercontent.com/SerbiaStrong-220/space-station-14/fa0479912413b71c64d7fec4373fdd0b5bbcec90/Resources/Locale/ru-RU/ss220/reagents/meta/medicine.ftl',
+# Переводы для базовых рецептов — русская локаль Corvax.
+BASE_TRANSLATION_URLS = (
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/biological.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/botany.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/chemicals.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/cleaning.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/elements.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/fun.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/gases.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/medicine.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/narcotics.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/toxins.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/food/food.ftl',
+    f'{_CORVAX}/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
+)
+
+# Встроенные пресеты: имя -> своё содержимое. При первом запуске (когда в
+# settings.cfg ещё нет ключа presets) имена записываются в конфиг, а папки
+# presets/<Имя>/ создаются с этими данными; дальше пресеты живут как
+# обычные пользовательские (заполнить/переименовать/удалить через вкладку
+# «Данные»). Пресет — только ссылки, файлы скачиваются общим механизмом:
+#   custom_recipes     — категория -> ссылка (или список ссылок) на .yml
+#                        (имя файла считается из пути ссылки и получает
+#                        суффикс); повторять ключ категории нельзя —
+#                        Python молча оставит последний, используйте список;
+#   custom_translations — список ссылок на .ftl (имя файла то же правило).
+# None у имени означает заводские ссылки приложения (как у свежей
+# установки).
+BUILTIN_PRESETS = {
+    'Default': None,
+    'Corvax': {
+        'custom_recipes': {
+            'Медикаменты': f'{_CORVAX}/Prototypes/Recipes/Reactions/medicine.yml',
+            'Химикаты': (
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/chemicals.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/cleaning.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/fun.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+            ),
+            'Ботаника': f'{_CORVAX}/Prototypes/Recipes/Reactions/botany.yml',
+            'Напитки': (
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/drinks.yml',
+                f'{_CORVAX}/Prototypes/Corvax/Recipes/Reactions/drinks.yml',
+            ),
+            'Еда': f'{_CORVAX}/Prototypes/Recipes/Reactions/food.yml',
+            'Остальное': (
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/soap.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/biological.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/gas.yml',
+                f'{_CORVAX}/Prototypes/Recipes/Reactions/single_reagent.yml',
+                ),
+        },
+        'custom_translations': BASE_TRANSLATION_URLS,
+    },
+    'SS220 Exodus': {
+        'custom_recipes': {
+            'Медикаменты': (
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/medicine.yml',
+                f'{_MONOLITH}/Prototypes/_Exodus/Recipes/Reactions/medicine.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/medicine.yml',
+                f'{_MONOLITH}/Prototypes/_NF/Recipes/Reactions/medicine.yml',
+            ),
+            'Химикаты': (
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/chemicals.yml',
+                f'{_MONOLITH}/Prototypes/_NF/Recipes/Reactions/chemicals.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+                f'{_MONOLITH}/Prototypes/_NF/Recipes/Reactions/pyrotechnic.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/cleaning.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/fun.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/economy.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/fentanyl.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/pyrotechnics.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/synthesis.yml',
+            ),
+            'Ботаника': f'{_MONOLITH}/Prototypes/Recipes/Reactions/botany.yml',
+            'Напитки': (
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/drinks.yml',
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/drinks.yml',
+                f'{_MONOLITH}/Prototypes/_NF/Recipes/Reactions/drinks.yml',
+            ),
+            'Еда': f'{_MONOLITH}/Prototypes/Recipes/Reactions/food.yml',
+            'Остальное': (
+                f'{_MONOLITH}/Prototypes/_Mono/Recipes/Reactions/technological.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/biological.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/gas.yml',
+                f'{_MONOLITH}/Prototypes/Recipes/Reactions/single_reagent.yml',
+            ),
+        },
+        'custom_translations': (
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/biological.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/botany.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/chemicals.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/cleaning.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/elements.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/fun.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/gases.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/medicine.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/narcotics.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/toxins.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/food/food.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/Goobstation/reagents/meta/medicine.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_DV/reagents/meta/consumable/food/condiments.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Exodus/reagents/medicine.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Mono/reagents/medicine.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Mono/reagents/narcotics.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Mono/reagents/technological.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_Mono/reagents/meta/consumable/drink/drinks.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/biological.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/chemicals.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/medicine.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/narcotics.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/drink/drinks.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/food/food.ftl',
+            f'{_MONOLITH}/Locale/ru-RU/_NF/reagents/meta/consumable/food/ingredients.ftl',
+        ),
+    },
+    'SS220 Main': {
+        'custom_recipes': {
+            'Медикаменты': (
+                f'{_SS220}/Prototypes/Recipes/Reactions/medicine.yml',
+                f'{_SS220}/Prototypes/SS220/Recipes/Reactions/medicine.yml',
+            ),
+            'Химикаты': (
+                f'{_SS220}/Prototypes/Recipes/Reactions/fun.yml',
+                f'{_SS220}/Prototypes/SS220/Recipes/Reactions/fun.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/chemicals.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/cleaning.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
+                f'{_SS220}/Prototypes/SS220/Recipes/Reactions/nacrotics.yml',
+            ),
+            'Ботаника': f'{_SS220}/Prototypes/Recipes/Reactions/botany.yml',
+            'Напитки': (
+                f'{_SS220}/Prototypes/Recipes/Reactions/drinks.yml',
+                f'{_SS220}/Prototypes/SS220/Recipes/Reactions/drinks.yml',
+            ),
+            'Еда': (
+                f'{_SS220}/Prototypes/Recipes/Reactions/food.yml',
+                f'{_SS220}/Prototypes/SS220/Recipes/Reactions/food.yml',
+            ),
+            'Остальное': (
+                f'{_SS220}/Prototypes/Recipes/Reactions/soap.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/biological.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/gas.yml',
+                f'{_SS220}/Prototypes/Recipes/Reactions/single_reagent.yml',
+            ),
+        },
+        'custom_translations': (
+            f'{_SS220}/Locale/ru-RU/reagents/meta/biological.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/botany.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/chemicals.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/cleaning.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/elements.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/fun.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/gases.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/medicine.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/narcotics.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/pyrotechnic.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/toxins.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/drink/alcohol.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/drink/drinks.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/drink/juice.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/drink/soda.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/food/condiments.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/food/food.ftl',
+            f'{_SS220}/Locale/ru-RU/reagents/meta/consumable/food/ingredients.ftl',
+            f'{_SS220}/Locale/ru-RU-220/reagents/meta/medicine.ftl',
+        ),
+    },
 }
 
 COLOR_NAMES = {

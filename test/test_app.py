@@ -6,8 +6,11 @@ the local ``settings.cfg``, ``recipes/`` and ``translations/`` are never
 touched: the data folders are copied first and the working directory is
 switched to the copy.
 """
+import contextlib
+import io
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -21,7 +24,8 @@ sys.path.insert(0, REPO_ROOT)
 import main as app_main  # noqa: E402
 import logic  # noqa: E402
 import ui  # noqa: E402
-from data import DEFAULT_DEPTH_COLORS  # noqa: E402
+from data import (BASE_RECIPE_CATEGORIES, BASE_TRANSLATION_URLS,
+                  BUILTIN_PRESETS, DEFAULT_DEPTH_COLORS)  # noqa: E402
 
 FAILURES = []
 MODAL_LOG = []
@@ -160,6 +164,82 @@ def test_startup(app, win):
     check(not os.path.exists('recipes') or os.listdir('recipes'), 'recipe files are loaded')
 
 
+def test_data_py(app, win):
+    print('data.py links')
+
+    def good_url(url, suffix):
+        return (isinstance(url, str)
+                and url.startswith(('http://', 'https://'))
+                and url.endswith(suffix))
+
+    def source_urls(value):
+        if isinstance(value, str):
+            return (value,)
+        if isinstance(value, (list, tuple)):
+            return tuple(value)
+        return ()
+
+    check(all(isinstance(name, str) and name.strip() for name in BASE_RECIPE_CATEGORIES),
+          'every recipe source has a name')
+    bad = [name for name, value in BASE_RECIPE_CATEGORIES.items()
+           if not all(good_url(url, '.yml') for url in source_urls(value))]
+    check(not bad, f'every recipe link is an http(s) .yml URL {bad}')
+    check(all(good_url(url, '.ftl') for url in BASE_TRANSLATION_URLS),
+          'every translation link is an http(s) .ftl URL')
+
+    for name, content in BUILTIN_PRESETS.items():
+        check(bool(name) and name not in ('.', '..')
+              and not any(char in '<>:"/\\|?*' or ord(char) < 32 for char in name),
+              f'the built-in preset name is usable {name!r}')
+        if content is None:
+            continue
+        if not isinstance(content, dict):
+            check(False, f'the {name} preset is a dict or None')
+            continue
+        check(set(content) <= {'custom_recipes', 'custom_translations'},
+              f'the {name} preset holds only links')
+        recipes = content.get('custom_recipes') or {}
+        translations = content.get('custom_translations') or ()
+        check(isinstance(recipes, dict)
+              and all(isinstance(category, str) and category.strip()
+                      and all(good_url(url, '.yml') for url in source_urls(value))
+                      for category, value in recipes.items()),
+              f'the {name} recipe links are categories to .yml URLs')
+        check(isinstance(translations, (list, tuple))
+              and all(good_url(url, '.ftl') for url in translations),
+              f'the {name} translation links are a list of .ftl URLs')
+
+    # a category may hold several links; every one becomes its own file
+    links, cats = logic.recipe_links_and_labels({
+        'Медикаменты': ('https://example.com/main/medicine.yml',
+                        'https://example.com/ss220/medicine.yml'),
+        'Химикаты': 'https://example.com/chemicals.yml',
+    })
+    check(len(links) == 3 and set(cats.values()) == {'Медикаменты', 'Химикаты'},
+          'a category may hold several links')
+
+    # a repeated link is reported instead of silently doubling the file
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        logic.recipe_links_and_labels({
+            'Медикаменты': 'https://example.com/medicine.yml',
+            'Запасные': 'https://example.com/medicine.yml',
+        })
+    check('Предупреждение' in buffer.getvalue(),
+          'a repeated link is reported on the console')
+
+    # sources sharing a category are saved back as a list
+    grouped = logic.preset_content(
+        {'a1': 'https://example.com/main/medicine.yml',
+         'a2': 'https://example.com/ss220/medicine.yml'},
+        {'b1': 'https://example.com/x.ftl'},
+        {'a1': 'Медикаменты', 'a2': 'Медикаменты'})
+    check(grouped['custom_recipes'] == {
+        'Медикаменты': ['https://example.com/main/medicine.yml',
+                        'https://example.com/ss220/medicine.yml']},
+        'sources sharing a category are saved as a list')
+
+
 def test_search(app, win):
     print('search')
     check(hasattr(logic, 'get_best_match'), 'logic.get_best_match exists')
@@ -260,12 +340,9 @@ def test_calculation(app, win):
     check(scrollbar.value() == scrollbar.maximum(), 'scroll position survives a recalculation')
 
     # Катализатор: пометка, тег [р] и развёрнутая собственная рецептура.
-    win.category_combo.setCurrentIndex(win.category_combo.findText('Botany'))
-    app.processEvents()
-    names = [win.recipe_combo.itemText(i) for i in range(win.recipe_combo.count())]
-    index = next((i for i, name in enumerate(names) if 'обаст' in name), None)
-    check(index is not None, 'the catalyst test recipe is present in Botany')
-    if index is not None:
+    index = win.recipe_combo.findText('Дифенгидрамин')
+    check(index >= 0, 'the catalyst test recipe is present in medicine')
+    if index >= 0:
         win.recipe_combo.setCurrentIndex(index)
         win.amount_entry.setText('10')
         win.calculate_reactants()
@@ -417,20 +494,150 @@ def test_settings(app, win):
     check(win.language == 'ru', 'language selection is stored')
 
     # links tab wiring
+    # A downloaded file that no source points at still has to be visible.
+    phantom = os.path.join(logic.RECIPE_FOLDER, 'phantom.yml')
+    with open(phantom, 'w', encoding='utf-8') as handle:
+        handle.write('- type: reaction\n  id: Phantom\n  reactants:\n'
+                     '    Water:\n      amount: 1\n  products:\n    Water: 1\n')
     built_tabs.append(ui._build_links_tab(win))
-    check(win.links_table.rowCount() == len(win.custom_recipe_links),
-          'link table lists the configured recipes')
-    win.links_mode_combo.setCurrentIndex(1)
-    check(win.links_table.rowCount() == len(win.custom_translation_links),
+
+    def row_by_name(name):
+        for row in range(win.links_table.rowCount()):
+            item = win.links_table.item(row, 0)
+            if item.text() == name or item.data(QtCore.Qt.UserRole) == name:
+                return row
+        return -1
+
+    def headers():
+        return [win.links_table.horizontalHeaderItem(column).text()
+                for column in range(win.links_table.columnCount())]
+
+    check(headers() == ['Категория', 'Ссылка', 'Файл'], 'recipes table has a category column')
+    check(win.links_recipe_btn.isChecked() and not win.links_translation_btn.isChecked(),
+          'recipes mode is on by default')
+
+    downloaded = logic.local_files(logic.RECIPE_FOLDER, '.yml')
+    expected = len(win.custom_recipe_links) + len(downloaded - set(win.custom_recipe_links))
+    check(win.links_table.rowCount() == expected,
+          'link table lists the sources and the local files')
+    row = row_by_name('medicine')
+    check(row >= 0 and win.links_table.item(row, 2).text() == 'medicine.yml',
+          'a downloaded source shows its file name')
+    row = row_by_name('phantom')
+    check(row >= 0 and win.links_table.item(row, 1).text() == ''
+          and win.links_table.item(row, 2).text() == 'phantom.yml',
+          'a local file without a source is listed')
+    check(not (win.links_table.item(row, 2).flags() & QtCore.Qt.ItemIsEditable),
+          'the file cell is read-only')
+    check(not (win.links_table.item(row, 1).flags() & QtCore.Qt.ItemIsEditable),
+          'the link cell is read-only')
+
+    # Categories change only through the edit dialog, with validation.
+    chemicals_row = row_by_name('chemicals')
+    pyro_row = row_by_name('pyrotechnic')
+    check(not (win.links_table.item(chemicals_row, 0).flags() & QtCore.Qt.ItemIsEditable),
+          'the category cell is read-only')
+
+    def fill_category(label):
+        def fill(dialog):
+            edits = dialog.findChildren(QtWidgets.QLineEdit)
+            edits[0].setText(label)
+            for button in dialog.findChildren(QtWidgets.QPushButton):
+                if button.text() == 'Сохранить':
+                    button.click()
+        return fill
+
+    def edit_category(row, label):
+        win.links_table.selectRow(row)
+        sweeper = start_modal_sweeper(app, action=fill_category(label))
+        ui.edit_link(win, is_edit=True)
+        app.processEvents()
+        stop_sweeper(sweeper)
+
+    def category_names():
+        return [win.category_combo.itemText(index)
+                for index in range(win.category_combo.count())]
+
+    edit_category(chemicals_row, '')
+    check(win.links_table.item(chemicals_row, 0).text() == 'chemicals',
+          'an empty category is rejected')
+
+    edit_category(chemicals_row, 'плохое/имя')
+    check(not win.recipe_file_categories, 'a category with bad characters is rejected')
+
+    edit_category(chemicals_row, 'Химия')
+    check(win.recipe_file_categories.get('chemicals') == 'Химия', 'the new category is stored')
+    check('Химия' in category_names(), 'the category box picks up the new label')
+    grouped = [recipe for recipe in win.recipes if recipe['category'] == 'Химия']
+    check(grouped and 'chemicals' not in category_names(),
+          'recipes move to the new category')
+
+    extra = [recipe for recipe in win.recipes if recipe['category'] == 'pyrotechnic']
+    check(extra, 'pyrotechnic recipes exist before the merge')
+    edit_category(pyro_row, 'Химия')
+    merged = [recipe for recipe in win.recipes if recipe['category'] == 'Химия']
+    check(len(merged) == len(grouped) + len(extra), 'two files merge into one category')
+
+    edit_category(chemicals_row, 'chemicals')
+    edit_category(pyro_row, 'pyrotechnic')
+    check(not win.recipe_file_categories, 'restoring the labels drops the mapping')
+    check('chemicals' in category_names(), 'the original category is back')
+
+    # Translations: links only, the file name comes from the link.
+    win.links_translation_btn.click()
+    check(headers() == ['Ссылка', 'Файл'], 'translations table has no category column')
+    check(not win.links_recipe_btn.isChecked() and win.links_translation_btn.isChecked(),
+          'the mode buttons follow the table')
+    downloaded = logic.local_files(logic.TRANSLATION_FOLDER, '.ftl')
+    expected = len(win.custom_translation_links) + len(downloaded - set(win.custom_translation_links))
+    check(win.links_table.rowCount() == expected,
           'switching the mode shows translations')
-    win.links_mode_combo.setCurrentIndex(0)
+
+    def fill_translation(url):
+        def fill(dialog):
+            edits = dialog.findChildren(QtWidgets.QLineEdit)
+            check(len(edits) == 1, 'the translation form only asks for a link')
+            edits[0].setText(url)
+            for button in dialog.findChildren(QtWidgets.QPushButton):
+                if button.text() == 'Сохранить':
+                    button.click()
+        return fill
+
+    translation_links = dict(win.custom_translation_links)
+    sweeper = start_modal_sweeper(app, action=fill_translation('https://example.com/path/тестовый.ftl'))
+    ui.edit_link(win, is_edit=False)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    added = set(win.custom_translation_links) - set(translation_links)
+    stem = added.pop() if len(added) == 1 else ''
+    check(re.fullmatch(r'тестовый-[0-9a-f]{5}', stem) is not None,
+          f'the translation file is named after the link with a suffix ({stem})')
+    check(win.custom_translation_links.get(stem) == 'https://example.com/path/тестовый.ftl',
+          'the link is stored under the file name')
+
+    sweeper = start_modal_sweeper(app, action=fill_translation('https://example.com/other/тестовый.ftl'))
+    ui.edit_link(win, is_edit=False)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    later = set(win.custom_translation_links) - set(translation_links)
+    check(len(later) == 2, 'a second link gets its own file')
+    second = (later - {stem}).pop()
+    check(re.fullmatch(r'тестовый-[0-9a-f]{5}', second) is not None and second != stem,
+          'every new file carries its own suffix')
+
+    for old in later:
+        win.links_table.selectRow(row_by_name(old))
+        ui.delete_link(win)
+    check(win.custom_translation_links == translation_links, 'translation rows can be deleted')
+    win.links_recipe_btn.click()
 
     # invalid sources are rejected
+    before = win.links_table.rowCount()
     sweeper = start_modal_sweeper(app)
     ui.edit_link(win, is_edit=False)
     app.processEvents()
     stop_sweeper(sweeper)
-    check(win.links_table.rowCount() == len(win.custom_recipe_links),
+    check(win.links_table.rowCount() == before,
           'an empty link form is rejected')
 
     def fill_bad(dialog):
@@ -456,21 +663,64 @@ def test_settings(app, win):
                 button.click()
 
     before = win.links_table.rowCount()
+    recipe_links = dict(win.custom_recipe_links)
     sweeper = start_modal_sweeper(app, action=fill_good)
     ui.edit_link(win, is_edit=False)
     app.processEvents()
     stop_sweeper(sweeper)
     check(win.links_table.rowCount() == before + 1, 'a valid source is added to the table')
-    check(win.custom_recipe_links.get('тестовый источник') == 'https://example.com/test.yml',
-          'a valid source is stored in the settings')
-    check(win.recipe_categories.get('тестовый источник') == 'https://example.com/test.yml',
+    added = set(win.custom_recipe_links) - set(recipe_links)
+    stem = added.pop() if len(added) == 1 else ''
+    check(re.fullmatch(r'test-[0-9a-f]{5}', stem) is not None,
+          f'the file is named after the link with a suffix ({stem})')
+    check(win.custom_recipe_links.get(stem) == 'https://example.com/test.yml',
+          'the link is stored under the file name')
+    check(win.recipe_categories.get(stem) == 'https://example.com/test.yml',
           'a valid source becomes an update source')
+    check(win.recipe_file_categories.get(stem) == 'тестовый источник',
+          'the settings map the file name to the category')
+    row = row_by_name(stem)
+    check(row >= 0 and win.links_table.item(row, 0).text() == 'тестовый источник'
+          and win.links_table.item(row, 2).text() == f'{stem}.yml (не загружен)',
+          'a source without a downloaded file is marked')
 
     # deleting it again
-    win.links_table.selectRow(win.links_table.rowCount() - 1)
+    win.links_table.selectRow(row)
     ui.delete_link(win)
-    check('тестовый источник' not in win.custom_recipe_links, 'sources can be deleted')
-    check('тестовый источник' not in win.recipe_categories, 'deletion updates the sources')
+    check(stem not in win.custom_recipe_links, 'sources can be deleted')
+    check(stem not in win.recipe_categories, 'deletion updates the sources')
+    check(stem not in win.recipe_file_categories, 'deletion drops the category mapping')
+    check(row_by_name(stem) < 0, 'a deleted row leaves the table')
+
+    # A second "medicine" source becomes its own file with the same category.
+    def fill_medicine(dialog):
+        edits = dialog.findChildren(QtWidgets.QLineEdit)
+        edits[0].setText('medicine')
+        edits[1].setText('https://example.com/medicine-copy.yml')
+        for button in dialog.findChildren(QtWidgets.QPushButton):
+            if button.text() == 'Сохранить':
+                button.click()
+
+    recipe_links = dict(win.custom_recipe_links)
+    sweeper = start_modal_sweeper(app, action=fill_medicine)
+    ui.edit_link(win, is_edit=False)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    added = set(win.custom_recipe_links) - set(recipe_links)
+    check(len(added) == 1, 'a duplicate category is added as its own file')
+    stem = added.pop()
+    check(re.fullmatch(r'medicine-copy-[0-9a-f]{5}', stem) is not None,
+          f'every new file is named after its link ({stem})')
+    row = row_by_name(stem)
+    check(row >= 0 and win.links_table.item(row, 0).text() == 'medicine'
+          and win.links_table.item(row, 2).text().startswith(f'{stem}.yml'),
+          'the file column shows the suffixed name while the category stays clean')
+    win.links_table.selectRow(row)
+    ui.delete_link(win)
+    check(stem not in win.recipe_file_categories, 'deleting the row drops its category')
+
+    os.remove(phantom)
+    win.reload_links_table()
 
     built_tabs.append(ui._build_about_tab(win))
     about = built_tabs[-1]
@@ -484,8 +734,11 @@ def test_settings(app, win):
     win.save_settings()
     with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
         saved = json.load(handle)
-    check(set(saved) == {'opacity', 'language', 'depth_colors', 'custom_recipes',
-                         'custom_translations'}, 'settings.cfg keeps the Tk format')
+    check(set(saved) == {'config_version', 'opacity', 'language', 'depth_colors',
+                         'custom_recipes', 'custom_translations',
+                         'recipe_file_categories', 'presets'},
+          'settings.cfg keeps the Tk format plus the version, the labels and the presets')
+    check(saved['config_version'] == 1, 'the config carries its format version')
     check(saved['depth_colors'] == win.depth_colors, 'colours are written to disk')
 
     reads = []
@@ -549,6 +802,193 @@ def test_update_flow(app, win):
     logic._download = original_download
 
 
+def test_presets(app, win):
+    print('presets')
+    check(win.presets == ['Default', 'Corvax', 'SS220 Exodus', 'SS220 Main'],
+          'the built-in presets are seeded into the list')
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check(saved.get('presets') == win.presets, 'the preset list is written to settings.cfg')
+    check(os.path.isdir(os.path.join('presets', 'Default')),
+          'every built-in preset gets its folder')
+    default = logic.read_preset('Default')
+    check(default['custom_recipes'] == {
+        win.base_recipe_labels[stem]: url
+        for stem, url in win.base_recipe_categories.items()},
+        'the Default preset holds the factory links by category')
+    check(default['custom_translations'] == list(win.base_translation_files.values()),
+          'the Default preset holds the factory translation links')
+    for name in ('Corvax', 'SS220 Exodus', 'SS220 Main'):
+        content = logic.read_preset(name)
+        own = json.loads(json.dumps(BUILTIN_PRESETS[name] or {}))
+        check(content['custom_recipes'] == dict(own.get('custom_recipes') or {})
+              and content['custom_translations'] == list(own.get('custom_translations') or ()),
+              f'the {name} preset carries its own links from data.py')
+    main_recipes, main_translations = logic.preset_file_counts('SS220 Main')
+    expected_main = sum(len(value) if isinstance(value, (list, tuple)) else 1
+                        for value in BUILTIN_PRESETS['SS220 Main']['custom_recipes'].values())
+    check(main_recipes == expected_main
+          and main_translations == len(BUILTIN_PRESETS['SS220 Main']['custom_translations']),
+          'a preset of pure links counts them')
+
+    # an old-style preset (file names as keys) is converted on read
+    os.makedirs(logic.preset_path('Старый формат'), exist_ok=True)
+    with open(os.path.join(logic.preset_path('Старый формат'), logic.PRESET_FILE),
+              'w', encoding='utf-8') as handle:
+        json.dump({'custom_recipes': {'a-1': 'https://example.com/x.yml'},
+                   'custom_translations': {'b-1': 'https://example.com/y.ftl'},
+                   'recipe_file_categories': {'a-1': 'Химия'}}, handle)
+    check(logic.read_preset('Старый формат') == {
+        'custom_recipes': {'Химия': 'https://example.com/x.yml'},
+        'custom_translations': ['https://example.com/y.ftl']},
+        'an old preset is converted on read')
+    logic.delete_preset('Старый формат')
+
+    ui.set_links_mode(win, 'Пресеты')
+    headers = [win.links_table.horizontalHeaderItem(column).text()
+               for column in range(win.links_table.columnCount())]
+    check(headers == ['Название', 'Рецептов', 'Переводов'], 'the preset table has its columns')
+    check(win.links_table.rowCount() == len(win.presets), 'every preset gets a row')
+    check(win.links_table.item(0, 0).text() == 'Default', 'the presets keep their order')
+    check(not win.preset_load_btn.isHidden() and win.links_add_btn.isHidden(),
+          'the preset buttons replace the source buttons')
+
+    def preset_row(name):
+        for row in range(win.links_table.rowCount()):
+            if win.links_table.item(row, 0).text() == name:
+                return row
+        return -1
+
+    def fill_name(dialog, name):
+        edits = dialog.findChildren(QtWidgets.QLineEdit)
+        edits[0].setText(name)
+        for button in dialog.findChildren(QtWidgets.QPushButton):
+            if button.text() == 'Сохранить':
+                button.click()
+
+    # saving the current data as a new preset
+    recipe_links = dict(win.custom_recipe_links)
+    translation_links = dict(win.custom_translation_links)
+    labels = dict(win.recipe_file_categories)
+    sweeper = start_modal_sweeper(
+        app, action=lambda dialog: fill_name(dialog, 'Тестовый пресет'))
+    ui.save_preset_as(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check('Тестовый пресет' in win.presets, 'a new preset joins the list')
+    content = logic.read_preset('Тестовый пресет')
+    check(content == logic.preset_content(recipe_links, translation_links, labels),
+          'the preset stores the links by category')
+    recipes, translations = logic.preset_file_counts('Тестовый пресет')
+    check(recipes == len(recipe_links) and translations == len(translation_links),
+          'the preset counts its links')
+
+    # an existing name asks before it is overwritten
+    MODAL_LOG.clear()
+    sweeper = start_modal_sweeper(
+        app, action=lambda dialog: fill_name(dialog, 'Тестовый пресет'), answer='no')
+    ui.save_preset_as(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(any('Перезаписать' in title for title in MODAL_LOG),
+          'saving under an existing name asks for confirmation')
+    check(win.presets.count('Тестовый пресет') == 1, 'a declined overwrite changes nothing')
+
+    sweeper = start_modal_sweeper(
+        app, action=lambda dialog: fill_name(dialog, 'Тестовый пресет'), answer='yes')
+    ui.save_preset_as(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.presets.count('Тестовый пресет') == 1, 'an accepted overwrite keeps one entry')
+
+    # loading a preset backs the current data up and re-downloads the files
+    ui.set_links_mode(win, 'Рецепты')
+    stem = next(iter(win.custom_recipe_links))
+    for row in range(win.links_table.rowCount()):
+        if win.links_table.item(row, 0).data(QtCore.Qt.UserRole) == stem:
+            win.links_table.selectRow(row)
+            break
+    ui.delete_link(win)
+    check(stem not in win.custom_recipe_links, 'a source is dropped before the load')
+    pre_links = dict(win.custom_recipe_links)
+    pre_translations = dict(win.custom_translation_links)
+    pre_labels = dict(win.recipe_file_categories)
+
+    def load_and_wait(row_name):
+        """Answer the load question and wait for its update to finish."""
+        win.links_table.selectRow(preset_row(row_name))
+        MODAL_LOG.clear()
+        sweeper = start_modal_sweeper(app, answer='yes')
+        ui.load_preset(win)
+        deadline = QtCore.QDeadlineTimer(15000)
+        while not any('Данные успешно обновлены' in title for title in MODAL_LOG) \
+                and not deadline.hasExpired():
+            app.processEvents()
+            QtCore.QThread.msleep(10)
+        stop_sweeper(sweeper)
+        return any('Данные успешно обновлены' in title for title in MODAL_LOG)
+
+    original_download = logic._download
+    logic._download = lambda url, destination: None
+    ui.set_links_mode(win, 'Пресеты')
+    check(load_and_wait('Тестовый пресет'),
+          'loading the preset ends with the standard update')
+    check(set(win.custom_recipe_links.values()) == set(recipe_links.values()),
+          'the preset restores the saved links')
+    check(set(win.recipe_file_categories.values())
+          == {labels.get(stem, stem) for stem in recipe_links},
+          'the restored links carry their categories')
+    check(not logic.local_files('recipes', '.yml')
+          and not logic.local_files('translations', '.ftl'),
+          'the old files are dropped before the download')
+    check('backup' in win.presets, 'the current data is backed up before the load')
+    backup = logic.read_preset('backup')
+    check(backup == logic.preset_content(pre_links, pre_translations, pre_labels),
+          'the backup holds the state from before the load')
+    check(preset_row('backup') >= 0, 'the backup preset shows up in the table')
+
+    # loading the backup itself must not rewrite it
+    check(load_and_wait('backup'), 'the backup loads through the same update')
+    check(set(win.custom_recipe_links.values()) == set(pre_links.values()),
+          'the backup restores its own state')
+    check(win.presets.count('backup') == 1, 'loading the backup does not recreate it')
+    logic._download = original_download
+
+    # renaming
+    win.links_table.selectRow(preset_row('Тестовый пресет'))
+    sweeper = start_modal_sweeper(
+        app, action=lambda dialog: fill_name(dialog, 'Переименованный'))
+    ui.rename_preset(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check('Переименованный' in win.presets and 'Тестовый пресет' not in win.presets,
+          'the preset is renamed in the list')
+    check(os.path.isdir(os.path.join('presets', 'Переименованный'))
+          and not os.path.exists(os.path.join('presets', 'Тестовый пресет')),
+          'the preset folder follows the new name')
+
+    # an invalid name is rejected
+    sweeper = start_modal_sweeper(
+        app, action=lambda dialog: fill_name(dialog, 'плохое/имя'))
+    ui.save_preset_as(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(all(name != 'плохое/имя' for name in win.presets),
+          'an invalid preset name is rejected')
+
+    # deleting
+    win.links_table.selectRow(preset_row('Переименованный'))
+    sweeper = start_modal_sweeper(app, answer='yes')
+    ui.delete_preset(win)
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check('Переименованный' not in win.presets, 'a preset leaves the list')
+    check(not os.path.exists(os.path.join('presets', 'Переименованный')),
+          'the preset folder is deleted')
+
+    ui.set_links_mode(win, 'Рецепты')
+
+
 def test_reset(app, win):
     print('reset (destructive, runs last)')
     win.depth_colors[0] = '#FF0000'
@@ -569,6 +1009,15 @@ def test_reset(app, win):
     check(win.depth_colors == DEFAULT_DEPTH_COLORS, 'colours are back to the defaults')
     check(win.overlay_opacity == app_main.DEFAULT_OPACITY, 'opacity is back to the default')
     check(win.custom_recipe_links == win.base_recipe_categories, 'links are back to the defaults')
+    check(win.recipe_file_categories == win.base_recipe_labels,
+          'the category labels are back to the defaults')
+    check(win.presets == list(BUILTIN_PRESETS), 'the preset list is back to the built-ins')
+    check(not os.path.exists(os.path.join('presets', 'backup')),
+          'the preset folders are recreated from scratch')
+    check(logic.read_preset('Default')['custom_recipes'] == {
+        win.base_recipe_labels[stem]: url
+        for stem, url in win.base_recipe_categories.items()},
+        'the Default preset holds the factory links again')
     check(os.path.isdir('recipes') and os.path.isdir('translations'), 'data folders exist again')
     check(win.category_combo.count() == len(win.base_recipe_categories),
           'the category box shows the default sources')
@@ -585,19 +1034,20 @@ def test_close(app, win):
           'closing the window hides the overlay')
 
 
+FIXTURES = os.path.join(REPO_ROOT, 'test', 'fixtures')
+
+
 def make_workdir():
-    """Copy the downloaded data into a scratch directory and move into it."""
+    """Copy the test fixtures into a scratch directory and move into it.
+
+    The suite never touches the downloaded data: it runs on the committed
+    fixture recipes/translations, so a user updating or resetting the local
+    data cannot break the tests.
+    """
     workdir = tempfile.mkdtemp(prefix='ss14-calc-test-')
     for folder in ('recipes', 'translations'):
-        source = os.path.join(REPO_ROOT, folder)
-        target = os.path.join(workdir, folder)
-        if os.path.isdir(source):
-            shutil.copytree(source, target)
-        else:
-            os.makedirs(target)
-    if not os.listdir(os.path.join(workdir, 'recipes')):
-        print('No recipes next to the sources: start the application once and press '
-              '«Обновить данные» before running the tests.')
+        shutil.copytree(os.path.join(FIXTURES, folder), os.path.join(workdir, folder))
+    shutil.copy(os.path.join(FIXTURES, 'settings.cfg'), workdir)
     os.chdir(workdir)
     return workdir
 
@@ -609,8 +1059,8 @@ def run_suite():
     win.show()
     app.processEvents()
 
-    steps = (test_startup, test_search, test_calculation, test_overlay, test_settings,
-             test_update_flow, test_reset, test_close)
+    steps = (test_startup, test_data_py, test_search, test_calculation, test_overlay,
+             test_settings, test_update_flow, test_presets, test_reset, test_close)
     for step in steps:
         try:
             step(app, win)

@@ -18,12 +18,16 @@ from html import escape
 import requests
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from data import (APP_TITLE, BASE_RECIPE_CATEGORIES, BASE_TRANSLATION_FILES,
-                  COLOR_NAMES, DEFAULT_DEPTH_COLORS, UPDATE_MESSAGES, color_name)
+from data import (APP_TITLE, BASE_RECIPE_CATEGORIES, BASE_TRANSLATION_URLS,
+                  BUILTIN_PRESETS, COLOR_NAMES, DEFAULT_DEPTH_COLORS,
+                  UPDATE_MESSAGES, color_name)
 import logic
 import ui
 
 SETTINGS_FILE = 'settings.cfg'
+# Версия формата settings.cfg; при несовместимой смене формата старые
+# конфиги придётся мигрировать (ключ пишется новой версией приложения).
+CONFIG_VERSION = 1
 GITHUB_RELEASE_API = 'https://api.github.com/repos/R-R0S/ss14-calc/releases/latest'
 DEFAULT_OPACITY = 0.95
 DEFAULT_LANGUAGE = 'ru'
@@ -45,8 +49,9 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         super().__init__()
         self.current_version = '2.0'
 
-        self.base_recipe_categories = dict(BASE_RECIPE_CATEGORIES)
-        self.base_translation_files = dict(BASE_TRANSLATION_FILES)
+        self.base_recipe_categories, self.base_recipe_labels = \
+            logic.recipe_links_and_labels(BASE_RECIPE_CATEGORIES)
+        self.base_translation_files = logic.links_from_urls(BASE_TRANSLATION_URLS)
         self.COLOR_NAMES = dict(COLOR_NAMES)
 
         # configured sources (name -> url) and data loaded from disk
@@ -54,6 +59,8 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         self.translation_files = {}
         self.custom_recipe_links = {}
         self.custom_translation_links = {}
+        # file stem -> category label; files sharing a label are merged
+        self.recipe_file_categories = {}
         self.available_categories = []
         self.recipes = []
         self.recipe_dict = {}
@@ -64,6 +71,10 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         self.overlay_opacity = DEFAULT_OPACITY
         self.language = DEFAULT_LANGUAGE
         self.depth_colors = list(DEFAULT_DEPTH_COLORS)
+        # preset names in their shown order; the files live in presets/
+        self.presets = []
+        # format version of the settings.cfg read at startup
+        self.config_version = CONFIG_VERSION
 
         # overlay and settings dialog state
         self.overlay_window = None
@@ -289,14 +300,32 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
     def delete_link(self):
         ui.delete_link(self)
 
+    def load_preset(self):
+        ui.load_preset(self)
+
+    def save_preset_as(self):
+        ui.save_preset_as(self)
+
+    def rename_preset(self):
+        ui.rename_preset(self)
+
+    def delete_preset(self):
+        ui.delete_preset(self)
+
+    def reload_presets_table(self):
+        ui.reload_presets_table(self)
+
     def save_settings(self):
         """Write the current settings to disk, in the format Tk used."""
         settings = {
+            'config_version': CONFIG_VERSION,
             'opacity': self.overlay_opacity,
             'language': self.language,
             'depth_colors': list(self.depth_colors),
             'custom_recipes': dict(self.custom_recipe_links),
             'custom_translations': dict(self.custom_translation_links),
+            'recipe_file_categories': dict(self.recipe_file_categories),
+            'presets': list(self.presets),
         }
         try:
             with open(SETTINGS_FILE, 'w', encoding='utf-8') as handle:
@@ -306,25 +335,49 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
 
     def load_settings(self):
         """Read settings.cfg, falling back to the bundled defaults."""
+        missing = False
         try:
             with open(SETTINGS_FILE, encoding='utf-8') as handle:
                 settings = json.load(handle)
         except FileNotFoundError:
             settings = None
+            missing = True
         except (OSError, ValueError) as exc:
             print(f'Ошибка загрузки настроек: {exc}')
             settings = None
 
+        seeded = False
         if isinstance(settings, dict):
+            version = settings.get('config_version')
+            self.config_version = version if isinstance(version, int) else CONFIG_VERSION
             self.overlay_opacity = _read_opacity(settings.get('opacity'))
             self.language = settings.get('language', DEFAULT_LANGUAGE)
             self.depth_colors = _read_colors(settings.get('depth_colors'))
             self.custom_recipe_links = settings.get('custom_recipes') or dict(self.base_recipe_categories)
             self.custom_translation_links = settings.get('custom_translations') \
                 or dict(self.base_translation_files)
+            self.recipe_file_categories = dict(settings.get('recipe_file_categories') or {})
+            stored_presets = settings.get('presets')
+            if isinstance(stored_presets, list):
+                self.presets = [name for name in stored_presets
+                                if isinstance(name, str) and name.strip()]
+            else:
+                self.presets = list(BUILTIN_PRESETS)
+                seeded = True
         else:
             self.custom_recipe_links = dict(self.base_recipe_categories)
             self.custom_translation_links = dict(self.base_translation_files)
+            self.recipe_file_categories = dict(self.base_recipe_labels)
+            self.presets = list(BUILTIN_PRESETS)
+            if missing:
+                # Default file names carry a random suffix, so write them
+                # down at once: every later launch has to reuse the same names.
+                self.save_settings()
+
+        logic.ensure_preset_folders(self)
+        if seeded and not missing:
+            # The config predates presets; write the seeded list down.
+            self.save_settings()
 
         self.recipe_categories.update(self.custom_recipe_links)
         self.translation_files.update(self.custom_translation_links)
@@ -334,7 +387,8 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         answer = QtWidgets.QMessageBox.question(
             self,
             'Сброс настроек',
-            'Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?')
+            'Вы уверены, что хотите сбросить все настройки к значениям по умолчанию?\n'
+            'Все локальные файлы рецептов, переводов и пресетов будут удалены.')
         if answer != QtWidgets.QMessageBox.Yes:
             return
 
@@ -343,6 +397,7 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
                 os.remove(SETTINGS_FILE)
             shutil.rmtree(logic.RECIPE_FOLDER, ignore_errors=True)
             shutil.rmtree(logic.TRANSLATION_FOLDER, ignore_errors=True)
+            shutil.rmtree(logic.PRESETS_FOLDER, ignore_errors=True)
             logic.setup_dirs(self)
 
             self.overlay_opacity = DEFAULT_OPACITY
@@ -350,8 +405,12 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             self.depth_colors = list(DEFAULT_DEPTH_COLORS)
             self.custom_recipe_links = dict(self.base_recipe_categories)
             self.custom_translation_links = dict(self.base_translation_files)
+            self.recipe_file_categories = dict(self.base_recipe_labels)
+            self.presets = list(BUILTIN_PRESETS)
             self.recipe_categories = dict(self.custom_recipe_links)
             self.translation_files = dict(self.custom_translation_links)
+            logic.ensure_preset_folders(self)
+            self.save_settings()
 
             self.reload_data()
             self._sync_settings_widgets()

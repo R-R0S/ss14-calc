@@ -13,6 +13,7 @@ import webbrowser
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from data import ABOUT_INFO, APP_TITLE, COLOR_NAMES, color_name
+import logic
 
 GITHUB_URL = 'https://github.com/R-R0S/ss14-calc'
 DISCORD_URL = 'https://discord.com/users/317692089355862016'
@@ -59,6 +60,8 @@ QHeaderView::section {
     border: none;
     padding: 4px;
 }
+QHeaderView { background-color: #454545; }
+QTableCornerButton::section { background-color: #454545; border: none; }
 QPushButton {
     background-color: #454545;
     color: #ffffff;
@@ -69,6 +72,7 @@ QPushButton {
 QPushButton:hover { background-color: #5e5e5e; }
 QPushButton:pressed { background-color: #1e7e34; }
 QPushButton:disabled { background-color: #3c3c3c; color: #909090; }
+QPushButton#links_mode_button:checked { background-color: #1e7e34; }
 QPushButton#discord_button { background: transparent; padding: 0; }
 QPushButton#discord_button:hover { background: rgba(255, 255, 255, 40); border-radius: 4px; }
 QProgressBar {
@@ -596,7 +600,7 @@ def create_settings_window(self):
     tabs = QtWidgets.QTabWidget()
     layout.addWidget(tabs)
     tabs.addTab(_build_general_tab(self), 'Основные')
-    tabs.addTab(_build_links_tab(self), 'Ссылки')
+    tabs.addTab(_build_links_tab(self), 'Данные')
     tabs.addTab(_build_about_tab(self), 'О приложении')
 
     dialog.exec()
@@ -666,35 +670,53 @@ def _build_links_tab(self):
     links = QtWidgets.QWidget()
     column = QtWidgets.QVBoxLayout(links)
 
+    self.links_mode = 'Рецепты'
     mode_row = QtWidgets.QHBoxLayout()
-    mode_row.addWidget(QtWidgets.QLabel('Режим:'))
-    self.links_mode_combo = QtWidgets.QComboBox()
-    self.links_mode_combo.addItems(['Рецепты', 'Переводы'])
-    mode_row.addWidget(self.links_mode_combo)
+    self.links_recipe_btn = QtWidgets.QPushButton('Рецепты')
+    self.links_translation_btn = QtWidgets.QPushButton('Переводы')
+    self.links_preset_btn = QtWidgets.QPushButton('Пресеты')
+    for button in (self.links_recipe_btn, self.links_translation_btn, self.links_preset_btn):
+        button.setCheckable(True)
+        button.setObjectName('links_mode_button')
+        mode_row.addWidget(button)
     mode_row.addStretch()
     column.addLayout(mode_row)
+    self.links_recipe_btn.setChecked(True)
 
-    self.links_table = QtWidgets.QTableWidget(0, 2)
-    self.links_table.setHorizontalHeaderLabels(['Название', 'Ссылка'])
-    self.links_table.horizontalHeader().setStretchLastSection(True)
+    self.links_table = QtWidgets.QTableWidget(0, 3)
+    self.links_table.setHorizontalHeaderLabels(['Категория', 'Ссылка', 'Файл'])
+    header = self.links_table.horizontalHeader()
+    header.setSectionResizeMode(QtWidgets.QHeaderView.Interactive)
     self.links_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
     self.links_table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
     column.addWidget(self.links_table)
 
     buttons = QtWidgets.QHBoxLayout()
-    add_button = QtWidgets.QPushButton('Добавить')
-    add_button.clicked.connect(lambda: self.edit_link(is_edit=False))
-    edit_button = QtWidgets.QPushButton('Редактировать')
-    edit_button.clicked.connect(lambda: self.edit_link(is_edit=True))
-    delete_button = QtWidgets.QPushButton('Удалить')
-    delete_button.clicked.connect(self.delete_link)
-    for button in (add_button, edit_button, delete_button):
+    self.links_add_btn = QtWidgets.QPushButton('Добавить')
+    self.links_add_btn.clicked.connect(lambda: self.edit_link(is_edit=False))
+    self.links_edit_btn = QtWidgets.QPushButton('Редактировать')
+    self.links_edit_btn.clicked.connect(lambda: self.edit_link(is_edit=True))
+    self.links_delete_btn = QtWidgets.QPushButton('Удалить')
+    self.links_delete_btn.clicked.connect(self.delete_link)
+    self.preset_load_btn = QtWidgets.QPushButton('Загрузить')
+    self.preset_load_btn.clicked.connect(self.load_preset)
+    self.preset_save_btn = QtWidgets.QPushButton('Сохранить как…')
+    self.preset_save_btn.clicked.connect(self.save_preset_as)
+    self.preset_rename_btn = QtWidgets.QPushButton('Переименовать')
+    self.preset_rename_btn.clicked.connect(self.rename_preset)
+    self.preset_delete_btn = QtWidgets.QPushButton('Удалить')
+    self.preset_delete_btn.clicked.connect(self.delete_preset)
+    for button in (self.links_add_btn, self.links_edit_btn, self.links_delete_btn,
+                   self.preset_load_btn, self.preset_save_btn,
+                   self.preset_rename_btn, self.preset_delete_btn):
         buttons.addWidget(button)
     buttons.addStretch()
     column.addLayout(buttons)
 
-    self.links_mode_combo.currentIndexChanged.connect(self.reload_links_table)
-    reload_links_table(self)
+    self.links_recipe_btn.clicked.connect(lambda: set_links_mode(self, 'Рецепты'))
+    self.links_translation_btn.clicked.connect(lambda: set_links_mode(self, 'Переводы'))
+    self.links_preset_btn.clicked.connect(lambda: set_links_mode(self, 'Пресеты'))
+    set_links_mode(self, 'Рецепты')
     return links
 
 
@@ -713,79 +735,158 @@ def _build_about_tab(self):
     return about
 
 
+def set_links_mode(self, mode):
+    """Show recipes, translations or presets in the links table."""
+    self.links_mode = mode
+    self.links_recipe_btn.setChecked(mode == 'Рецепты')
+    self.links_translation_btn.setChecked(mode == 'Переводы')
+    self.links_preset_btn.setChecked(mode == 'Пресеты')
+    is_presets = mode == 'Пресеты'
+    for button in (self.links_add_btn, self.links_edit_btn, self.links_delete_btn):
+        button.setVisible(not is_presets)
+    for button in (self.preset_load_btn, self.preset_save_btn,
+                   self.preset_rename_btn, self.preset_delete_btn):
+        button.setVisible(is_presets)
+    if is_presets:
+        self.links_table.setColumnCount(3)
+        self.links_table.setHorizontalHeaderLabels(['Название', 'Рецептов', 'Переводов'])
+        reload_presets_table(self)
+    elif mode == 'Рецепты':
+        self.links_table.setColumnCount(3)
+        self.links_table.setHorizontalHeaderLabels(['Категория', 'Ссылка', 'Файл'])
+        reload_links_table(self)
+    else:
+        self.links_table.setColumnCount(2)
+        self.links_table.setHorizontalHeaderLabels(['Ссылка', 'Файл'])
+        reload_links_table(self)
+    _fit_links_columns(self)
+
+
+def _fit_links_columns(self):
+    """Give every column an initial width the user can still drag."""
+    if self.links_mode == 'Пресеты':
+        widths = (230, 110, 110)
+    elif self.links_mode == 'Рецепты':
+        widths = (160, 330, 170)
+    else:
+        widths = (470, 170)
+    header = self.links_table.horizontalHeader()
+    for index, width in enumerate(widths):
+        header.resizeSection(index, width)
+
+
 def reload_links_table(self):
-    """Fill the links table with the sources of the selected mode."""
+    """Fill the links table with the sources and the downloaded files.
+
+    Sources keep their configured order; downloaded files that no longer
+    belong to a source are listed after them with an empty link.  Every
+    cell is read-only: the category and the link change only through the
+    dialog and the file name is automatic.
+    """
+    sources, _live_sources, folder, suffix = _current_links(self)
+    downloaded = logic.local_files(folder, suffix)
+    is_recipes = self.links_mode == 'Рецепты'
+    url_column = 1 if is_recipes else 0
+    file_column = url_column + 1
+
+    names = list(sources)
+    names += [name for name in sorted(downloaded) if name not in sources]
+
     self.links_table.setRowCount(0)
-    sources = self.custom_recipe_links if self.links_mode_combo.currentText() == 'Рецепты' \
-        else self.custom_translation_links
-    for name, url in sources.items():
+    for name in names:
         row = self.links_table.rowCount()
         self.links_table.insertRow(row)
-        self.links_table.setItem(row, 0, QtWidgets.QTableWidgetItem(name))
-        self.links_table.setItem(row, 1, QtWidgets.QTableWidgetItem(url))
+
+        note = '' if name in downloaded else ' (не загружен)'
+        file_item = QtWidgets.QTableWidgetItem(f'{name}{suffix}{note}')
+        file_item.setFlags(file_item.flags() & ~QtCore.Qt.ItemIsEditable)
+
+        url_item = QtWidgets.QTableWidgetItem(sources.get(name, ''))
+        url_item.setData(QtCore.Qt.UserRole, name)
+        url_item.setFlags(url_item.flags() & ~QtCore.Qt.ItemIsEditable)
+
+        if is_recipes:
+            label = self.recipe_file_categories.get(name, name)
+            category_item = QtWidgets.QTableWidgetItem(label)
+            category_item.setData(QtCore.Qt.UserRole, name)
+            category_item.setFlags(category_item.flags() & ~QtCore.Qt.ItemIsEditable)
+            self.links_table.setItem(row, 0, category_item)
+        self.links_table.setItem(row, url_column, url_item)
+        self.links_table.setItem(row, file_column, file_item)
 
 
 def _current_links(self):
     """Return ``(saved_links, live_sources, folder, suffix)`` for the mode."""
-    if self.links_mode_combo.currentText() == 'Рецепты':
+    if self.links_mode == 'Рецепты':
         return self.custom_recipe_links, self.recipe_categories, 'recipes', '.yml'
     return self.custom_translation_links, self.translation_files, 'translations', '.ftl'
 
 
 def edit_link(self, is_edit=False):
     """Add a source or change the one selected in the table."""
-    row, original_name, name, url = None, '', '', ''
+    is_recipes = self.links_mode == 'Рецепты'
+    stem, label, url = '', '', ''
     if is_edit:
         selected = self.links_table.selectedItems()
         if not selected:
             QtWidgets.QMessageBox.warning(self, 'Ошибка', 'Выберите запись для редактирования')
             return
         row = selected[0].row()
-        original_name = self.links_table.item(row, 0).text()
-        name = original_name
-        url = self.links_table.item(row, 1).text()
+        stem = self.links_table.item(row, 0).data(QtCore.Qt.UserRole)
+        label = self.links_table.item(row, 0).text() if is_recipes else stem
+        url = self.links_table.item(row, 1 if is_recipes else 0).text()
 
     dialog = QtWidgets.QDialog(self)
     dialog.setWindowTitle('Редактирование ссылки' if is_edit else 'Добавление ссылки')
     layout = QtWidgets.QVBoxLayout(dialog)
 
-    layout.addWidget(QtWidgets.QLabel('Название:'))
-    name_edit = QtWidgets.QLineEdit(name)
-    layout.addWidget(name_edit)
+    label_edit = None
+    if is_recipes:
+        layout.addWidget(QtWidgets.QLabel('Категория:'))
+        label_edit = QtWidgets.QLineEdit(label)
+        layout.addWidget(label_edit)
     layout.addWidget(QtWidgets.QLabel('Ссылка:'))
     url_edit = QtWidgets.QLineEdit(url)
     layout.addWidget(url_edit)
 
     def save():
-        new_name = name_edit.text().strip()
+        nonlocal stem
         new_url = url_edit.text().strip()
-        if not new_name or not new_url:
-            QtWidgets.QMessageBox.critical(dialog, 'Ошибка', 'Название и ссылка не могут быть пустыми')
-            return
         if not new_url.startswith(('http://', 'https://')):
             QtWidgets.QMessageBox.critical(dialog, 'Ошибка', 'Ссылка должна начинаться с http:// или https://')
             return
-        if any(char in '<>:"/\\|?*' or ord(char) < 32 for char in new_name):
-            QtWidgets.QMessageBox.critical(
-                dialog, 'Ошибка', 'Название не может содержать символы, запрещённые в именах файлов')
-            return
 
-        saved_links, live_sources, _folder, _suffix = _current_links(self)
-        if is_edit:
-            self.links_table.setItem(row, 0, QtWidgets.QTableWidgetItem(new_name))
-            self.links_table.setItem(row, 1, QtWidgets.QTableWidgetItem(new_url))
-            if original_name != new_name:
-                saved_links.pop(original_name, None)
-                live_sources.pop(original_name, None)
-        else:
-            position = self.links_table.rowCount()
-            self.links_table.insertRow(position)
-            self.links_table.setItem(position, 0, QtWidgets.QTableWidgetItem(new_name))
-            self.links_table.setItem(position, 1, QtWidgets.QTableWidgetItem(new_url))
+        new_label = label_edit.text().strip() if is_recipes else ''
+        if is_recipes:
+            if not new_label:
+                QtWidgets.QMessageBox.critical(dialog, 'Ошибка', 'Категория не может быть пустой')
+                return
+            if any(char in '<>:"/\\|?*' or ord(char) < 32 for char in new_label):
+                QtWidgets.QMessageBox.critical(
+                    dialog, 'Ошибка',
+                    'Категория не может содержать символы, запрещённые в именах файлов')
+                return
 
-        saved_links[new_name] = new_url
-        live_sources[new_name] = new_url
+        saved_links, live_sources, folder, suffix = _current_links(self)
+        if not is_edit:
+            base = logic.file_stem_from_url(new_url)
+            if not base:
+                QtWidgets.QMessageBox.critical(
+                    dialog, 'Ошибка', 'Не удалось определить имя файла по ссылке')
+                return
+            taken = set(saved_links) | logic.local_files(folder, suffix)
+            stem = logic.fresh_file_stem(base, taken)
+
+        saved_links[stem] = new_url
+        live_sources[stem] = new_url
+        if is_recipes:
+            if new_label == stem:
+                self.recipe_file_categories.pop(stem, None)
+            else:
+                self.recipe_file_categories[stem] = new_label
+        reload_links_table(self)
         self.save_settings()
+        self.reload_data()
         dialog.accept()
 
     buttons = QtWidgets.QHBoxLayout()
@@ -808,18 +909,218 @@ def delete_link(self):
         return
 
     row = selected[0].row()
-    name = self.links_table.item(row, 0).text()
-    self.links_table.removeRow(row)
+    stem = self.links_table.item(row, 0).data(QtCore.Qt.UserRole)
 
     saved_links, live_sources, folder, suffix = _current_links(self)
-    saved_links.pop(name, None)
-    live_sources.pop(name, None)
+    saved_links.pop(stem, None)
+    live_sources.pop(stem, None)
+    self.recipe_file_categories.pop(stem, None)
     try:
-        path = os.path.join(folder, f'{name}{suffix}')
+        path = os.path.join(folder, f'{stem}{suffix}')
         if os.path.exists(path):
             os.remove(path)
     except OSError as exc:
-        print(f'Не удалось удалить {name}{suffix}: {exc}')
+        print(f'Не удалось удалить {stem}{suffix}: {exc}')
 
+    reload_links_table(self)
     self.save_settings()
     self.reload_data()
+
+
+def reload_presets_table(self):
+    """Fill the table with the preset names in their configured order."""
+    self.links_table.setRowCount(0)
+    for name in self.presets:
+        row = self.links_table.rowCount()
+        self.links_table.insertRow(row)
+
+        name_item = QtWidgets.QTableWidgetItem(name)
+        name_item.setData(QtCore.Qt.UserRole, name)
+        name_item.setFlags(name_item.flags() & ~QtCore.Qt.ItemIsEditable)
+        self.links_table.setItem(row, 0, name_item)
+
+        recipes, translations = logic.preset_file_counts(name)
+        for column, count in ((1, recipes), (2, translations)):
+            count_item = QtWidgets.QTableWidgetItem(str(count))
+            count_item.setTextAlignment(QtCore.Qt.AlignCenter)
+            count_item.setFlags(count_item.flags() & ~QtCore.Qt.ItemIsEditable)
+            self.links_table.setItem(row, column, count_item)
+
+
+def _selected_preset(self):
+    """Name of the preset selected in the table, or ``''``."""
+    selected = self.links_table.selectedItems()
+    if not selected:
+        return ''
+    return self.links_table.item(selected[0].row(), 0).data(QtCore.Qt.UserRole)
+
+
+def _preset_name_error(name):
+    """Reason why *name* cannot be a preset name, or ``None``."""
+    if not name:
+        return 'Имя пресета не может быть пустым'
+    if name in ('.', '..') or any(char in '<>:"/\\|?*' or ord(char) < 32 for char in name):
+        return 'Имя пресета не может содержать символы, запрещённые в именах файлов'
+    return None
+
+
+def load_preset(self):
+    """Replace the local sources with the selected preset, backing the old one up.
+
+    A preset holds links only, so the local files are dropped and fetched
+    again by the standard update flow.
+    """
+    name = _selected_preset(self)
+    if not name:
+        QtWidgets.QMessageBox.warning(self, 'Ошибка', 'Выберите пресет для загрузки')
+        return
+
+    answer = QtWidgets.QMessageBox.question(
+        self, 'Загрузка пресета',
+        f'Заменить текущие рецепты, переводы и ссылки на пресет «{name}»?\n'
+        'Текущие данные будут сохранены в пресет «backup», '
+        'файлы будут скачаны заново.')
+    if answer != QtWidgets.QMessageBox.Yes:
+        return
+
+    if name != 'backup':
+        try:
+            logic.write_preset('backup', logic.preset_content(
+                self.custom_recipe_links, self.custom_translation_links,
+                self.recipe_file_categories))
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(
+                self, 'Ошибка', f'Не удалось сохранить пресет «backup»: {exc}')
+            return
+        if 'backup' not in self.presets:
+            self.presets.append('backup')
+
+    try:
+        content = logic.read_preset(name)
+    except (OSError, ValueError) as exc:
+        QtWidgets.QMessageBox.critical(
+            self, 'Ошибка', f'Не удалось прочитать пресет «{name}»: {exc}')
+        return
+
+    recipe_links, translation_links, labels = logic.preset_links(content)
+    logic.clear_data_files()
+    self.custom_recipe_links = recipe_links
+    self.custom_translation_links = translation_links
+    self.recipe_file_categories = labels
+    self.recipe_categories = dict(self.custom_recipe_links)
+    self.translation_files = dict(self.custom_translation_links)
+    self.save_settings()
+    self.reload_data()
+    reload_presets_table(self)
+    self.update_data_async()
+
+
+def save_preset_as(self):
+    """Store the current sources as a preset of its own."""
+    dialog = QtWidgets.QDialog(self)
+    dialog.setWindowTitle('Сохранение пресета')
+    layout = QtWidgets.QVBoxLayout(dialog)
+    layout.addWidget(QtWidgets.QLabel('Название:'))
+    name_edit = QtWidgets.QLineEdit()
+    layout.addWidget(name_edit)
+
+    def save():
+        name = name_edit.text().strip()
+        error = _preset_name_error(name)
+        if error:
+            QtWidgets.QMessageBox.critical(dialog, 'Ошибка', error)
+            return
+        if name in self.presets:
+            answer = QtWidgets.QMessageBox.question(
+                dialog, 'Перезапись пресета',
+                f'Пресет «{name}» уже существует. Перезаписать его текущими данными?')
+            if answer != QtWidgets.QMessageBox.Yes:
+                return
+        try:
+            logic.write_preset(name, logic.preset_content(
+                self.custom_recipe_links, self.custom_translation_links,
+                self.recipe_file_categories))
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(dialog, 'Ошибка', f'Не удалось сохранить пресет: {exc}')
+            return
+        if name not in self.presets:
+            self.presets.append(name)
+        self.save_settings()
+        reload_presets_table(self)
+        dialog.accept()
+
+    buttons = QtWidgets.QHBoxLayout()
+    save_button = QtWidgets.QPushButton('Сохранить')
+    save_button.clicked.connect(save)
+    cancel_button = QtWidgets.QPushButton('Отмена')
+    cancel_button.clicked.connect(dialog.reject)
+    buttons.addWidget(save_button)
+    buttons.addWidget(cancel_button)
+    layout.addLayout(buttons)
+
+    dialog.exec()
+
+
+def rename_preset(self):
+    """Give the selected preset a new name."""
+    old = _selected_preset(self)
+    if not old:
+        QtWidgets.QMessageBox.warning(self, 'Ошибка', 'Выберите пресет для переименования')
+        return
+
+    dialog = QtWidgets.QDialog(self)
+    dialog.setWindowTitle('Переименование пресета')
+    layout = QtWidgets.QVBoxLayout(dialog)
+    layout.addWidget(QtWidgets.QLabel('Новое название:'))
+    name_edit = QtWidgets.QLineEdit(old)
+    layout.addWidget(name_edit)
+
+    def save():
+        name = name_edit.text().strip()
+        error = _preset_name_error(name)
+        if error:
+            QtWidgets.QMessageBox.critical(dialog, 'Ошибка', error)
+            return
+        if name == old:
+            dialog.accept()
+            return
+        if name in self.presets:
+            QtWidgets.QMessageBox.critical(
+                dialog, 'Ошибка', 'Пресет с таким именем уже существует')
+            return
+        try:
+            logic.rename_preset(old, name)
+        except OSError as exc:
+            QtWidgets.QMessageBox.critical(dialog, 'Ошибка', f'Не удалось переименовать пресет: {exc}')
+            return
+        self.presets[self.presets.index(old)] = name
+        self.save_settings()
+        reload_presets_table(self)
+        dialog.accept()
+
+    buttons = QtWidgets.QHBoxLayout()
+    save_button = QtWidgets.QPushButton('Сохранить')
+    save_button.clicked.connect(save)
+    cancel_button = QtWidgets.QPushButton('Отмена')
+    cancel_button.clicked.connect(dialog.reject)
+    buttons.addWidget(save_button)
+    buttons.addWidget(cancel_button)
+    layout.addLayout(buttons)
+
+    dialog.exec()
+
+
+def delete_preset(self):
+    """Remove the selected preset with all of its files."""
+    name = _selected_preset(self)
+    if not name:
+        QtWidgets.QMessageBox.warning(self, 'Ошибка', 'Выберите пресет для удаления')
+        return
+    answer = QtWidgets.QMessageBox.question(
+        self, 'Удаление пресета', f'Удалить пресет «{name}» со всеми файлами?')
+    if answer != QtWidgets.QMessageBox.Yes:
+        return
+    logic.delete_preset(name)
+    self.presets.remove(name)
+    self.save_settings()
+    reload_presets_table(self)

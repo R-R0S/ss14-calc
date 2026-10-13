@@ -1,0 +1,9 @@
+- type: reaction
+  id: Steel
+  reactants:
+    Iron:
+      amount: 1
+    Carbon:
+      amount: 1
+  products:
+    Steel: 1

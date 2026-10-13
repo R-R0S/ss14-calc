@@ -14,5 +14,7 @@ dist/
 # Локальные данные
 settings.cfg
 AGENTS.md
-recipes/
-translations/
+/recipes/
+/translations/
+/presets/
+/some-stuff/

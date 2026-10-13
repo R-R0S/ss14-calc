@@ -1,4 +1,4 @@
-"""Dump the rendered calculation for a sample of recipes.
+"""Dump the rendered calculation for every test fixture recipe.
 
 A regression helper: take a snapshot before a change, another one after it
 and diff the two.
@@ -6,10 +6,10 @@ and diff the two.
     python test/snapshot_calculation.py > /tmp/after.txt
     diff /tmp/before.txt /tmp/after.txt
 
-The script runs in a scratch directory holding a copy of the downloaded data,
-so the local ``settings.cfg``, ``recipes/`` and ``translations/`` are never
-touched.  Like the application itself, it needs recipes: start the app once
-and press «Обновить данные».
+The script runs on the committed test fixtures (``test/fixtures``) inside a
+scratch directory, so the local ``settings.cfg``, ``recipes/`` and
+``translations/`` are never touched and the dump stays the same no matter
+what data the application has downloaded.
 """
 import os
 import shutil
@@ -23,23 +23,15 @@ sys.path.insert(0, REPO_ROOT)
 
 import main as app_main  # noqa: E402
 
-SAMPLE_SIZE = 45
+FIXTURES = os.path.join(REPO_ROOT, 'test', 'fixtures')
 AMOUNTS = ('90', '1')
-
-# Добавляются к выборке в дополнение к равномерной.
-FIXED_RECIPES = ('RobustHarvest', 'CreateButter')
 
 
 def make_workdir():
-    """Copy the downloaded data into a scratch directory and move into it."""
+    """Copy the test fixtures into a scratch directory and move into it."""
     workdir = tempfile.mkdtemp(prefix='ss14-calc-snapshot-')
     for folder in ('recipes', 'translations'):
-        source = os.path.join(REPO_ROOT, folder)
-        target = os.path.join(workdir, folder)
-        if os.path.isdir(source):
-            shutil.copytree(source, target)
-        else:
-            os.makedirs(target)
+        shutil.copytree(os.path.join(FIXTURES, folder), os.path.join(workdir, folder))
     os.chdir(workdir)
     return workdir
 
@@ -64,12 +56,7 @@ def dump(app, win):
     print('RECIPE_COUNT_IN_CATEGORY:', win.recipe_combo.count())
 
     recipe_ids = sorted(win.recipe_dict)
-    step = max(1, len(recipe_ids) // SAMPLE_SIZE)
-    sample = list(recipe_ids[::step])
-    for recipe_id in FIXED_RECIPES:
-        if recipe_id in win.recipe_dict and recipe_id not in sample:
-            sample.append(recipe_id)
-    for recipe_id in sample:
+    for recipe_id in recipe_ids:
         recipe = win.recipe_dict[recipe_id]
         category = recipe['category']
         index = win.category_combo.findText(category)
