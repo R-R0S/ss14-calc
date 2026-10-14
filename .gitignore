@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+.venv/
+
+# Артефакты сборки .exe (PyInstaller)
+build/
+dist/
+*.spec
+
+# Локальные данные
+settings.cfg
+AGENTS.md
+/recipes/
+/translations/
+/presets/
+/some-stuff/
+
+# Тесты
+/test/
