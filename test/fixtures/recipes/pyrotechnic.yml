@@ -1,9 +1,0 @@
-- type: reaction
-  id: FlashPowder
-  reactants:
-    Aluminum:
-      amount: 1
-    Potassium:
-      amount: 1
-  products:
-    FlashPowder: 1
