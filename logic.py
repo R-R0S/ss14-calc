@@ -449,18 +449,77 @@ def update_data(app):
         app.data_update_finished.emit(report)
 
 
+def is_mixer_category(recipe, category):
+    """True when *recipe* needs the mixer named *category*."""
+    return category in recipe.get('requiredMixerCategories', [])
+
+
+def is_electrolysis_recipe(recipe):
+    """True when the recipe runs in the electrolysis apparatus."""
+    return is_mixer_category(recipe, 'Electrolysis')
+
+
+def is_centrifuge_recipe(recipe):
+    """True when the recipe runs in the centrifuge."""
+    return is_mixer_category(recipe, 'Centrifuge')
+
+
+def is_decomposition(recipe):
+    """True when the recipe only reshapes its reagent.
+
+    Centrifuge and electrolysis entries clutter the tree: they split a reagent
+    the user already has in hand instead of building anything.
+    """
+    return is_electrolysis_recipe(recipe) or is_centrifuge_recipe(recipe)
+
+
+def recipe_label(app, recipe_id):
+    """Return the shown name of *recipe_id*, like its calculation header."""
+    return app.translations.get(recipe_id.lower().replace(' ', ''), recipe_id)
+
+
+def reagent_label(app, reagent):
+    """Return the shown name of *reagent* as written in the translations."""
+    normalized = reagent.lower().replace(' ', '').replace('-', '')
+    return app.translations.get(normalized, reagent)
+
+
 def chosen_recipe_id(app, reagent):
     """Return the recipe used to expand *reagent*, or ``None`` if it has none.
 
-    The default is the recipe whose id matches the reagent; an explicit
-    override wins when it names a recipe that actually yields the reagent.
+    The default is the recipe whose id matches the reagent, unless that recipe
+    only decomposes the reagent in a centrifuge or an electrolyser: those stay
+    hidden until the user asks for them.  A reagent without a recipe of its
+    own — a side product like Water — has no default either.  A recipe picked
+    in the menu is remembered for the current tree only.  A hidden reagent
+    never expands.
     """
-    override = (app.reagent_recipe_overrides or {}).get(reagent)
-    if override in app.recipes_by_product.get(reagent, ()):
-        return override
-    if reagent in app.recipe_dict:
-        return reagent
-    return None
+    if reagent in (app.hidden_recipes or ()):
+        return None
+    recipes = app.recipes_by_product.get(reagent, ())
+    chosen = (app.session_choices or {}).get(reagent)
+    if chosen in recipes:
+        return chosen
+    default = app.recipe_dict.get(reagent)
+    if default is None or is_decomposition(default):
+        return None
+    return reagent
+
+
+def root_recipe_id(app, recipe_id):
+    """Return the recipe actually run for the recipe box selection *recipe_id*.
+
+    A recipe picked on the root line is remembered for the current tree and
+    wins over the box; without such a choice the box selection itself runs.
+    """
+    recipe = app.recipe_dict.get(recipe_id)
+    product = next(iter(recipe.get('products', {})), None) if recipe else None
+    if product:
+        recipes = app.recipes_by_product.get(product, ())
+        chosen = (app.session_choices or {}).get(product)
+        if chosen in recipes:
+            return chosen
+    return recipe_id
 
 
 def recipe_choices(app, reagent):
@@ -469,11 +528,24 @@ def recipe_choices(app, reagent):
     Labels follow the header normalisation, so each entry reads like the same
     recipe would at the top of its own calculation.
     """
-    choices = []
-    for recipe_id in app.recipes_by_product.get(reagent, ()):
-        label = app.translations.get(recipe_id.lower().replace(' ', ''), recipe_id)
-        choices.append((recipe_id, label))
-    return choices
+    return [(recipe_id, recipe_label(app, recipe_id))
+            for recipe_id in app.recipes_by_product.get(reagent, ())]
+
+
+def recipe_menu_label(app, recipe_id, default_id):
+    """Name a recipe in the choice menu, apart from the default one.
+
+    A decomposition only changes the shape of a reagent, so its entry spells
+    out the machine it needs; anything else reads as an alternative recipe.
+    """
+    label = recipe_label(app, recipe_id)
+    if recipe_id == default_id:
+        return label
+    if is_electrolysis_recipe(app.recipe_dict.get(recipe_id, {})):
+        return f'Электролиз: {label}'
+    if is_centrifuge_recipe(app.recipe_dict.get(recipe_id, {})):
+        return f'Центрифуга: {label}'
+    return f'Альтернативный рецепт: {label}'
 
 
 def resolve_reactants(app, recipe_id, amount_needed, depth=0,
@@ -482,8 +554,10 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
 
     The reaction tree is walked depth first, so the caller only has to render
     the yielded lines in order to reproduce the original output.  ``link`` is
-    ``None`` for plain lines, or ``(anchor_text, reagent_id)`` for a reagent
-    that has several recipes and can be re-chosen by the user.
+    ``None`` for plain lines, or ``(anchor_text, reagent_id, scheme)``, where
+    ``scheme`` is ``reagent`` on a reactant line and ``root`` on the header.
+    Every reactant carrying a recipe is clickable even though no name is
+    underlined, so any reagent can be hidden from the current tree.
     """
     if visited is None:
         visited = set()
@@ -519,8 +593,8 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
         multiplier = amount_needed
 
     if include_header:
-        normalized_id = recipe_id.lower().replace(' ', '')
-        header = f"{'  ' * depth}{format_amount(amount_needed)} {app.translations.get(normalized_id, recipe_id)}"
+        recipe_name = recipe_label(app, recipe_id)
+        header = f"{'  ' * depth}{format_amount(amount_needed)} {recipe_name}"
         if is_electrolysis:
             header += ' [ЭЛЕКТРОЛИЗ]'
         elif is_centrifuge:
@@ -535,15 +609,19 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
             header += f"(мин. темп:{recipe['minTemp']}K)"
         if reactants:
             header += ':'
-        yield header, colour, None
+        link = None
+        if (target_product is not None
+                and len(app.recipes_by_product.get(target_product, ())) > 1):
+            link = (recipe_name, target_product, 'root')
+        yield header, colour, link
 
     for reactant, info in reactants.items():
         is_catalyst = info.get('catalyst', False)
         final_amount = info.get('amount', 0) * (multiplier if not is_catalyst else 1)
-        normalized_reactant = reactant.lower().replace(' ', '').replace('-', '')
-        name = app.translations.get(normalized_reactant, reactant)
+        name = reagent_label(app, reactant)
         line = f"{'  ' * (depth + 1)}{format_amount(final_amount)} {name}"
 
+        recipes = app.recipes_by_product.get(reactant, ())
         chosen = chosen_recipe_id(app, reactant)
         if chosen is not None:
             component_recipe = app.recipe_dict[chosen]
@@ -554,9 +632,7 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
         if is_catalyst:
             line += ' (катализатор)'
 
-        link = None
-        if chosen is not None and len(app.recipes_by_product.get(reactant, ())) > 1:
-            link = (name, reactant)
+        link = (name, reactant, 'reagent') if recipes else None
         yield line, colour, link
 
         if chosen is not None and reactant not in visited:
@@ -573,8 +649,7 @@ def resolve_reactants(app, recipe_id, amount_needed, depth=0,
     def product_lines(title):
         parts = []
         for product, amount in products.items():
-            normalized_product = product.lower().replace(' ', '').replace('-', '')
-            parts.append(f"{format_amount(amount * multiplier)} {app.translations.get(normalized_product, product)}")
+            parts.append(f"{format_amount(amount * multiplier)} {reagent_label(app, product)}")
         if parts:
             yield f"{'  ' * (depth + 1)}{title}: {' + '.join(parts)}", colour, None
 

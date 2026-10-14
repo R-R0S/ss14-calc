@@ -43,19 +43,21 @@ def build_result_html(lines):
     ``white-space: pre-wrap`` keeps the per depth indentation (HTML would
     collapse it) while still wrapping long lines, like the Tk text widget.  A
     reagent carrying a link becomes an anchor around its own name only, so the
-    surrounding amounts and ``[р]`` markers stay plain text.
+    surrounding amounts and ``[р]`` markers stay plain text.  Reactants open
+    the recipe menu but read as plain text: Qt underlines every anchor unless
+    the inline style spells ``text-decoration: none``, and every anchor here
+    says exactly that.
     """
     html = []
     for text, colour, link in lines:
         body = escape(text)
         if link:
-            anchor_text, reagent_id = link
+            anchor_text, reagent_id, scheme = link
             anchor = escape(anchor_text)
-            # Anchor the reagent name at its first (and only) occurrence.
             body = body.replace(
                 anchor,
-                f'<a href="reagent:{escape(reagent_id)}" '
-                f'style="color: {colour}; text-decoration: underline;">{anchor}</a>',
+                f'<a href="{scheme}:{escape(reagent_id)}" '
+                f'style="color: {colour}; text-decoration: none;">{anchor}</a>',
                 1,
             )
         html.append(
@@ -101,8 +103,13 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         self.overlay_opacity = DEFAULT_OPACITY
         self.language = DEFAULT_LANGUAGE
         self.depth_colors = list(DEFAULT_DEPTH_COLORS)
-        # reagent -> recipe id chosen for it over the default one
-        self.reagent_recipe_overrides = {}
+        # reagents whose recipe is switched off for the current tree only
+        self.hidden_recipes = set()
+        # reagent -> recipe replacing the default one for the current tree;
+        # every recipe pick lives here and is never stored in the settings
+        self.session_choices = {}
+        # the last result built by build_result_html, mirrored by the overlay
+        self.result_html = ''
         # preset names in their shown order; the files live in presets/
         self.presets = []
         # format version of the settings.cfg read at startup
@@ -151,7 +158,11 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         self.update_recipes_list()
 
     def update_recipes_list(self, *_args):
-        """Fill the recipe box with the selected category, sorted as in Tk."""
+        """Fill the recipe box with the selected category, sorted as in Tk.
+
+        A refill is not a new recipe: the box is repopulated around the same
+        selection, so the hidden recipes survive it.
+        """
         category = self.category_combo.currentText()
         names = []
         self.recipe_map = {}
@@ -261,6 +272,7 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         if not recipe_id or recipe_id not in self.recipe_dict:
             QtWidgets.QMessageBox.critical(self, 'Ошибка', 'Рецепт не найден')
             return
+        recipe_id = logic.root_recipe_id(self, recipe_id)
         try:
             amount = float(self.amount_entry.text() or 90)
         except ValueError:
@@ -270,27 +282,62 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         scrollbar = self.result_text.verticalScrollBar()
         scroll_position = scrollbar.value()
         lines = logic.resolve_reactants(self, recipe_id=recipe_id, amount_needed=amount)
-        self.result_text.setHtml(build_result_html(lines))
+        self.result_html = build_result_html(lines)
+        self.result_text.setHtml(self.result_html)
         scrollbar.setValue(scroll_position)
         ui.update_overlay_content(self)
 
     def on_result_link(self, url):
-        """Offer the alternative recipes of the clicked reagent."""
-        if url.scheme() != 'reagent':
+        """Offer the recipes of the clicked reagent, plus showing or hiding it."""
+        scheme = url.scheme()
+        if scheme not in ('reagent', 'root'):
             return
         reagent = url.path()
         choices = logic.recipe_choices(self, reagent)
-        if len(choices) < 2:
+        if not choices or (scheme == 'root' and len(choices) < 2):
             return
+
+        def hide_recipe():
+            """Switch this reagent's recipe off for the current tree only."""
+            self.hidden_recipes.add(reagent)
+            self.calculate_reactants()
+
+        def show_recipe():
+            """Bring this reagent's recipe back to the current tree."""
+            self.hidden_recipes.discard(reagent)
+            shown = logic.chosen_recipe_id(self, reagent)
+            if shown is None:
+                # A decomposition stays out until it is chosen explicitly.
+                recipe_ids = [recipe_id for recipe_id, _label in choices]
+                shown = reagent if reagent in recipe_ids else recipe_ids[0]
+            self.choose_reagent_recipe(reagent, shown)
+
+        if scheme == 'root':
+            default = self.recipe_map.get(self.recipe_combo.currentText())
+            current = logic.root_recipe_id(self, default)
+            pick = self.choose_root_recipe
+        else:
+            default = reagent
+            current = logic.chosen_recipe_id(self, reagent)
+            pick = self.choose_reagent_recipe
         # Parent the menu to the pane that was clicked: the overlay stays on
         # top, so a menu owned by the main window would open behind it.
         source = self.sender()
         menu = QtWidgets.QMenu(source if source is not None else self)
-        current = logic.chosen_recipe_id(self, reagent)
+        if scheme == 'reagent':
+            # The recipe is shown or not, not merely listed as hidden: a
+            # decomposition stays unexpanded until asked for.
+            hidden = logic.chosen_recipe_id(self, reagent) is None
+            toggle = menu.addAction('Показать рецепт' if hidden else 'Скрыть рецепт')
+            toggle.triggered.connect(
+                lambda _checked=False, show=hidden:
+                    QtCore.QTimer.singleShot(0, show_recipe if show else hide_recipe))
+            menu.addSeparator()
         for recipe_id, label in choices:
-            action = menu.addAction(label)
+            action = menu.addAction(
+                logic.recipe_menu_label(self, recipe_id, default))
             action.setCheckable(True)
-            action.setChecked(recipe_id == current)
+            action.setChecked(recipe_id == current and reagent not in self.hidden_recipes)
             # The choice rides the action itself, not on exec()'s return
             # value: a checkable action does not close the popup, so exec()
             # may well yield nothing after the click.  The recalculation is
@@ -299,17 +346,49 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             action.triggered.connect(
                 lambda _checked=False, picked=recipe_id:
                     QtCore.QTimer.singleShot(
-                        0, lambda: self.choose_reagent_recipe(reagent, picked)))
+                        0, lambda: pick(reagent, picked)))
         menu.exec(QtGui.QCursor.pos())
 
     def choose_reagent_recipe(self, reagent, recipe_id):
-        """Remember the recipe picked for *reagent* and recalculate."""
-        if recipe_id == reagent:
-            self.reagent_recipe_overrides.pop(reagent, None)
+        """Remember the recipe picked for *reagent* and recalculate.
+
+        The pick replaces the default only for the current tree: it lives in
+        ``session_choices`` and never reaches the settings.  Picking the
+        reagent's own full recipe is the default itself, so it clears the
+        remembered choice; a decomposition is remembered explicitly, because
+        it stays hidden until asked for.
+        """
+        self.hidden_recipes.discard(reagent)
+        picked = self.recipe_dict.get(recipe_id)
+        own_default = (recipe_id == reagent and picked is not None
+                       and not logic.is_decomposition(picked))
+        if own_default:
+            self.session_choices.pop(reagent, None)
         else:
-            self.reagent_recipe_overrides[reagent] = recipe_id
-        self.save_settings()
+            self.session_choices[reagent] = recipe_id
         self.calculate_reactants()
+
+    def choose_root_recipe(self, reagent, recipe_id):
+        """Run *recipe_id* behind the current recipe box selection.
+
+        The box keeps showing its own recipe: the picked one is remembered for
+        the current tree only, exactly like a choice made on a reactant line.
+        Picking what the box already names needs no memory at all.
+
+        The hidden recipes and the session choices are dropped as well:
+        they belong to the tree that the previous root produced.
+        """
+        self.hidden_recipes.clear()
+        self.session_choices.clear()
+        selected = self.recipe_map.get(self.recipe_combo.currentText())
+        if recipe_id != selected:
+            self.session_choices[reagent] = recipe_id
+        self.calculate_reactants()
+
+    def on_recipe_combo_changed(self, *_args):
+        """Another recipe in the box starts from the default tree state."""
+        self.hidden_recipes.clear()
+        self.session_choices.clear()
 
     # --------------------------------------------------------------- overlay
 
@@ -378,7 +457,12 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
         ui.reload_presets_table(self)
 
     def save_settings(self):
-        """Write the current settings to disk, in the format Tk used."""
+        """Write the current settings to disk, in the format Tk used.
+
+        Recipe replacements are not settings: they last until the recipe in
+        the box changes and are never written, so an older file's
+        ``reagent_recipe_overrides`` key disappears with this rewrite.
+        """
         settings = {
             'config_version': CONFIG_VERSION,
             'opacity': self.overlay_opacity,
@@ -387,7 +471,6 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             'custom_recipes': dict(self.custom_recipe_links),
             'custom_translations': dict(self.custom_translation_links),
             'recipe_file_categories': dict(self.recipe_file_categories),
-            'reagent_recipe_overrides': dict(self.reagent_recipe_overrides),
             'presets': list(self.presets),
         }
         try:
@@ -416,8 +499,6 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             self.overlay_opacity = _read_opacity(settings.get('opacity'))
             self.language = settings.get('language', DEFAULT_LANGUAGE)
             self.depth_colors = _read_colors(settings.get('depth_colors'))
-            self.reagent_recipe_overrides = _read_overrides(
-                settings.get('reagent_recipe_overrides'))
             self.custom_recipe_links = settings.get('custom_recipes') or dict(self.base_recipe_categories)
             self.custom_translation_links = settings.get('custom_translations') \
                 or dict(self.base_translation_files)
@@ -468,7 +549,8 @@ class ReagentCalculatorQt(QtWidgets.QMainWindow):
             self.overlay_opacity = DEFAULT_OPACITY
             self.language = DEFAULT_LANGUAGE
             self.depth_colors = list(DEFAULT_DEPTH_COLORS)
-            self.reagent_recipe_overrides = {}
+            self.hidden_recipes = set()
+            self.session_choices = {}
             self.custom_recipe_links = dict(self.base_recipe_categories)
             self.custom_translation_links = dict(self.base_translation_files)
             self.recipe_file_categories = dict(self.base_recipe_labels)
@@ -610,14 +692,6 @@ def _read_colors(values):
     """Return the six depth colours, padded with defaults when necessary."""
     valid = [value for value in (values or []) if isinstance(value, str) and _HEX_COLOR.match(value)]
     return (valid + list(DEFAULT_DEPTH_COLORS))[:6]
-
-
-def _read_overrides(values):
-    """Return the reagent -> recipe mapping, dropping malformed entries."""
-    if not isinstance(values, dict):
-        return {}
-    return {reagent: recipe_id for reagent, recipe_id in values.items()
-            if isinstance(reagent, str) and isinstance(recipe_id, str)}
 
 
 def main():

@@ -9,22 +9,22 @@ _MONOLITH = 'https://raw.githubusercontent.com/SerbiaStrong-220/Monolith/refs/he
 
 # Рецепты ванильной игры — Default.
 BASE_RECIPE_CATEGORIES = {
-    'Остальное': (
-        f'{_WIZARDS}/Prototypes/Recipes/Reactions/biological.yml',
-        f'{_WIZARDS}/Prototypes/Recipes/Reactions/gas.yml',
-        f'{_WIZARDS}/Prototypes/Recipes/Reactions/single_reagent.yml',
-        f'{_WIZARDS}/Prototypes/Recipes/Reactions/soap.yml',
-    ),
-    'Ботаника': f'{_WIZARDS}/Prototypes/Recipes/Reactions/botany.yml',
+    'Медикаменты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/medicine.yml',
     'Химикаты': (
         f'{_WIZARDS}/Prototypes/Recipes/Reactions/chemicals.yml',
         f'{_WIZARDS}/Prototypes/Recipes/Reactions/cleaning.yml',
         f'{_WIZARDS}/Prototypes/Recipes/Reactions/fun.yml',
         f'{_WIZARDS}/Prototypes/Recipes/Reactions/pyrotechnic.yml',
     ),
+    'Ботаника': f'{_WIZARDS}/Prototypes/Recipes/Reactions/botany.yml',
     'Напитки': f'{_WIZARDS}/Prototypes/Recipes/Reactions/drinks.yml',
     'Еда': f'{_WIZARDS}/Prototypes/Recipes/Reactions/food.yml',
-    'Медикаменты': f'{_WIZARDS}/Prototypes/Recipes/Reactions/medicine.yml',
+    'Остальное': (
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/biological.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/gas.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/single_reagent.yml',
+        f'{_WIZARDS}/Prototypes/Recipes/Reactions/soap.yml',
+    ),
 }
 
 # Переводы для базовых рецептов — русская локаль Corvax.

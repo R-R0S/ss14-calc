@@ -150,37 +150,62 @@ def start_modal_sweeper(app, action=None, answer=None):
 
 
 def stop_sweeper(state):
-    state['timer'].stop()
+    """Drop the sweeper, whether or not it found its menu."""
+    timer = state.timer if isinstance(state, PopupSweeper) else state['timer']
+    timer.stop()
 
 
-def start_popup_sweeper(app, label):
+class PopupSweeper(QtCore.QObject):
     """Click the action labelled *label* as soon as a menu pops up.
 
     A ``QMenu`` is a popup, not a modal, so ``activeModalWidget`` never sees
-    it; the click is deferred by one loop pass for the same reason as above.
-    The menu is hidden afterwards: the actions are checkable, and triggering
-    one of those toggles it without closing the popup, which would leave
-    ``QMenu.exec`` running forever.
-    """
-    state = {'done': False}
+    it; the click is deferred by one loop pass for the same reason as with a
+    modal.  The menu is hidden afterwards: the actions are checkable, and
+    triggering one of those toggles it without closing the popup, which would
+    leave ``QMenu.exec`` running forever.
 
-    def sweep():
-        if state['done']:
+    The menu is caught from a timer instead of an event filter: by the time
+    ``exec`` has entered its own nested loop, a timer is the only thing that
+    still ticks, and ``activePopupWidget`` names the menu exactly while it
+    lives.  A ``QMenu`` may appear without ever being a popup of the app, so
+    the timer also looks at the visible top level widgets.
+    """
+
+    def __init__(self, app, label):
+        super().__init__(app)
+        self._app = app
+        self._label = label
+        self._fired = False
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._sweep)
+        self.timer.start(20)
+
+    def _sweep(self):
+        if self._fired:
             return
-        menu = app.activePopupWidget()
+        menu = self._app.activePopupWidget()
+        if not isinstance(menu, QtWidgets.QMenu):
+            for widget in self._app.topLevelWidgets():
+                if (isinstance(widget, QtWidgets.QMenu) and widget.isVisible()
+                        and widget not in (self._app.activeWindow(),)):
+                    menu = widget
+                    break
         if not isinstance(menu, QtWidgets.QMenu):
             return
         for action in menu.actions():
-            if action.text() == label:
-                state['done'] = True
-                QtCore.QTimer.singleShot(0, lambda a=action, m=menu: (a.trigger(), m.hide()))
-                return
+            if action.text() != self._label:
+                continue
+            self._fired = True
+            # The recalculation may raise a dialog of its own, so it runs on
+            # the next loop pass, not inside the menu's own nested loop.
+            QtCore.QTimer.singleShot(0, lambda m=menu, a=action: (
+                a.trigger(), m.hide()))
+            return
 
-    timer = QtCore.QTimer()
-    timer.timeout.connect(sweep)
-    timer.start(20)
-    state['timer'] = timer
-    return state
+
+def start_popup_sweeper(app, label):
+    """Install a :class:`PopupSweeper` that clicks *label* in the next menu."""
+    return PopupSweeper(app, label)
 
 
 # --------------------------------------------------------------- test steps
@@ -464,6 +489,8 @@ def test_reagent_recipe_choice(app, win):
     # обычный текст результата остаётся прежним.
     check('reagent:Diphenhydramine' in win.result_text.toHtml(),
           'the reagent with two recipes carries a link')
+    check('text-decoration: underline' not in win.result_text.toHtml(),
+          'no reactant name is underlined in the result')
     text = win.result_text.toPlainText()
     check('Дифенгидрамин' in text and '[р]' in text,
           'the linked reagent keeps its name and the [р] tag')
@@ -479,20 +506,273 @@ def test_reagent_recipe_choice(app, win):
     text = win.result_text.toPlainText()
     check('720' in text and 'Сера' not in text,
           'the alternative recipe drives the tree (720 Этанол, no sulfur)')
-    check(win.reagent_recipe_overrides == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
-          'the choice is remembered on the window')
+    check(win.session_choices == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+          'the choice is remembered for this tree')
 
     win.save_settings()
     with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
         saved = json.load(handle)
-    check(saved['reagent_recipe_overrides']
-          == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
-          'the choice is written to settings.cfg')
+    check('reagent_recipe_overrides' not in saved,
+          'a recipe replacement is not written to settings.cfg')
 
-    # Выбор рецепта по умолчанию убирает переопределение целиком.
+    # Выбор рецепта по умолчанию убирает запомненную замену целиком.
     win.choose_reagent_recipe('Diphenhydramine', 'Diphenhydramine')
-    check(win.reagent_recipe_overrides == {}, 'the default recipe clears the override')
+    check(win.session_choices == {}, 'the default recipe clears the choice')
     check('Сера' in win.result_text.toPlainText(), 'the default recipe is back')
+
+    # The root line of a recipe with alternatives carries its own link.
+    index = win.recipe_combo.findText('Дифенгидрамин')
+    check(index >= 0, 'the ambiguous recipe is directly selectable')
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('90')
+    win.calculate_reactants()
+    check('root:Diphenhydramine' in win.result_text.toHtml(),
+          'the root line carries the recipe link')
+    check('90 Дифенгидрамин' in win.result_text.toPlainText(),
+          'the root line still reads as the header')
+
+    # A pick in the root menu: remembered, recalculated, box untouched.
+    sweeper = start_popup_sweeper(app, 'Альтернативный рецепт: DiphenhydramineFromEthanol')
+    win.result_text.anchorClicked.emit(QtCore.QUrl('root:Diphenhydramine'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.session_choices == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+          'the root menu remembers the alternative recipe')
+    text = win.result_text.toPlainText()
+    check('720' in text and 'Сера' not in text,
+          'the root line shows the chosen recipe')
+    check(win.recipe_combo.currentText() == 'Дифенгидрамин',
+          'the recipe box keeps its own selection')
+
+    # An explicit pick in the recipe box supersedes the root override.
+    win.recipe_combo.setCurrentIndex(win.recipe_combo.findText('DiphenhydramineFromEthanol'))
+    app.processEvents()
+    check(win.session_choices == {},
+          'an explicit pick in the recipe box drops the root choice')
+    win.calculate_reactants()
+    check('Сера' not in win.result_text.toPlainText(),
+          'the box variant is calculated as the root')
+
+    # Back to the state the following tests expect.
+    win.choose_reagent_recipe('Diphenhydramine', 'Diphenhydramine')
+    win.recipe_combo.setCurrentIndex(win.recipe_combo.findText('Гамма-препарат'))
+    win.calculate_reactants()
+    check(win.session_choices == {}, 'the default state is restored')
+
+
+def test_hidden_recipes(app, win):
+    print('hidden recipes')
+    win.category_combo.setCurrentIndex(win.category_combo.findText('chemicals'))
+    app.processEvents()
+    index = win.recipe_combo.findText('Светящаяся смесь')
+    check(index >= 0, 'the decomposition fixture is present in chemicals')
+    if index < 0:
+        return
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('90')
+    win.calculate_reactants()
+
+    # Центрифуга и электролиз по умолчанию скрыты: строки реактантов есть,
+    # но [р] и развёртывания нет.
+    html = win.result_text.toHtml()
+    text = win.result_text.toPlainText()
+    check('Радиевый порошок' in text and 'Радиевая соль' in text,
+          'the hidden reagents are still listed')
+    check('[р]' not in text and 'Сера' not in text,
+          'a decomposition expands nothing by default')
+    check('reagent:RadiumPowder' in html and 'reagent:RadiumSalt' in html,
+          'the hidden reagents stay clickable')
+    # Qt переносит декорацию ссылки в span внутри якоря.
+    anchor = re.search(
+        r'<a href="reagent:RadiumPowder"><span style="([^"]*)"', html)
+    check(anchor is not None and 'underline' not in anchor.group(1),
+          'a reagent with one recipe is clickable but not underlined')
+
+    # Меню скрытого по умолчанию разложения предлагает его показать.
+    sweeper = start_popup_sweeper(app, 'Показать рецепт')
+    win.result_text.anchorClicked.emit(QtCore.QUrl('reagent:RadiumPowder'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.session_choices == {'RadiumPowder': 'RadiumPowder'},
+          'the show action remembers the decomposition for this tree')
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check('reagent_recipe_overrides' not in saved,
+          'a shown decomposition is not written to settings.cfg')
+    text = win.result_text.toPlainText()
+    check('Кислород' in text and 'Продукты центрифуги' in text,
+          'the shown recipe expands')
+
+    # Показанный рецепт меню предлагает скрыть снова.
+    sweeper = start_popup_sweeper(app, 'Скрыть рецепт')
+    win.result_text.anchorClicked.emit(QtCore.QUrl('reagent:RadiumPowder'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.hidden_recipes == {'RadiumPowder'},
+          'the hide action hides the reagent recipe')
+    text = win.result_text.toPlainText()
+    check('Радиевый порошок' in text and 'Кислород' not in text,
+          'the hidden reagent line stays while its recipe disappears')
+
+    # Скрытый по умолчанию электролиз показывается так же.
+    sweeper = start_popup_sweeper(app, 'Показать рецепт')
+    win.result_text.anchorClicked.emit(QtCore.QUrl('reagent:RadiumSalt'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.session_choices.get('RadiumSalt') == 'RadiumSalt',
+          'the electrolysis recipe is picked through the menu')
+    check('Сера' in win.result_text.toPlainText(),
+          'the picked decomposition expands')
+
+    # Выбор собственного рецепта разложения из меню его развивает.
+    win.choose_reagent_recipe('RadiumPowder', 'RadiumPowder')
+    check('Кислород' in win.result_text.toPlainText(),
+          'a recipe pick expands the recipe')
+    text = win.result_text.toPlainText()
+    check('Продукты центрифуги' in text,
+          'the centrifuge recipe runs when chosen explicitly')
+    check('Радиевая соль [р]' in text,
+          'its reactant carries the [р] tag again')
+
+    # Легаси-ключ на разложение в конфиге игнорируется и вычищается.
+    win.session_choices.clear()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        legacy = json.load(handle)
+    legacy['reagent_recipe_overrides'] = {'RadiumPowder': 'RadiumPowder'}
+    with open(app_main.SETTINGS_FILE, 'w', encoding='utf-8') as handle:
+        json.dump(legacy, handle)
+    win.load_settings()
+    win.calculate_reactants()
+    check('Кислород' not in win.result_text.toPlainText(),
+          'a legacy decomposition entry in the config expands nothing')
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check('reagent_recipe_overrides' not in saved,
+          'the legacy config key is dropped on save')
+
+    win.hidden_recipes.clear()
+    win.session_choices.clear()
+    win.save_settings()
+    win.calculate_reactants()
+
+    # Скрытие живёт до смены рецепта и не пишется в настройки.
+    win.choose_reagent_recipe('RadiumSalt', 'RadiumSalt')
+    check('Сера' in win.result_text.toPlainText(),
+          'the electrolysis recipe is expanded again')
+    win.hidden_recipes.add('RadiumSalt')
+    win.calculate_reactants()
+    check('Сера' not in win.result_text.toPlainText(),
+          'the hidden reagent loses its recipe once more')
+
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check('hidden_recipes' not in saved,
+          'the hidden recipes are not written to settings.cfg')
+
+    index = win.recipe_combo.findText('Сталь')
+    win.recipe_combo.setCurrentIndex(index)
+    win.calculate_reactants()
+    check(win.hidden_recipes == set(),
+          'another recipe in the box starts with nothing hidden')
+    check(win.session_choices == {},
+          'another recipe in the box starts with no shown decomposition')
+
+    index = win.recipe_combo.findText('Светящаяся смесь')
+    win.recipe_combo.setCurrentIndex(index)
+    win.calculate_reactants()
+    check(win.hidden_recipes == set() and 'Сера' not in win.result_text.toPlainText(),
+          'coming back restores the unexpanded default tree')
+
+    # Back to the state the following tests expect.
+    win.category_combo.setCurrentIndex(win.category_combo.findText('medicine'))
+    app.processEvents()
+    index = win.recipe_combo.findText('Гамма-препарат')
+    check(index >= 0, 'the overlay recipe is present in medicine')
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('90')
+    win.calculate_reactants()
+
+
+def test_byproducts(app, win):
+    print('byproducts')
+
+    win.category_combo.setCurrentIndex(win.category_combo.findText('chemicals'))
+    app.processEvents()
+    index = win.recipe_combo.findText('Крошковая панель')
+    check(index >= 0, 'the byproduct fixture is present in chemicals')
+    if index < 0:
+        return
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('10')
+    win.calculate_reactants()
+
+    # Grit — добавочный: строка есть и кликабельна, но не развёрнута,
+    # в отличие от Steel, у которого есть собственный рецепт.
+    html = win.result_text.toHtml()
+    text = win.result_text.toPlainText()
+    check('Крошка' in text, 'the byproduct reagent is listed')
+    check('reagent:Grit' in html, 'the byproduct stays clickable')
+    check('Крошка [р]' not in text and 'Алюминий' not in text,
+          'a byproduct expands nothing by default')
+    check('Сталь [р]' in text and 'Углерод' in text,
+          'a reagent with its own recipe still expands')
+
+    # Меню скрытого по умолчанию добавочного предлагает его показать.
+    sweeper = start_popup_sweeper(app, 'Показать рецепт')
+    win.result_text.anchorClicked.emit(QtCore.QUrl('reagent:Grit'))
+    app.processEvents()
+    stop_sweeper(sweeper)
+    check(win.session_choices == {'Grit': 'SolventMix'},
+          'the show action remembers the byproduct recipe for this tree')
+    check('Крошка [р]' in win.result_text.toPlainText()
+          and 'Алюминий' in win.result_text.toPlainText(),
+          'the shown byproduct recipe expands')
+
+    # Выбор рецептуры добавочного продукта сессионный и не сохраняется.
+    win.choose_reagent_recipe('Grit', 'SolventMix')
+    check(win.session_choices == {'Grit': 'SolventMix'},
+          'a byproduct pick stays in the session choices')
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check('reagent_recipe_overrides' not in saved,
+          'a byproduct pick is not written to settings.cfg')
+
+    # Легаси-ключ на добавочный продукт в конфиге игнорируется и вычищается.
+    win.session_choices.clear()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        legacy = json.load(handle)
+    legacy['reagent_recipe_overrides'] = {'Grit': 'SolventMix'}
+    with open(app_main.SETTINGS_FILE, 'w', encoding='utf-8') as handle:
+        json.dump(legacy, handle)
+    win.load_settings()
+    win.calculate_reactants()
+    check('Алюминий' not in win.result_text.toPlainText(),
+          'a legacy byproduct entry in the config expands nothing')
+    win.save_settings()
+    with open(app_main.SETTINGS_FILE, encoding='utf-8') as handle:
+        saved = json.load(handle)
+    check('reagent_recipe_overrides' not in saved,
+          'the legacy config key is dropped on save')
+
+    # Смена рецепта возвращает всё к умолчанию.
+    index = win.recipe_combo.findText('Сталь')
+    win.recipe_combo.setCurrentIndex(index)
+    win.calculate_reactants()
+    check(win.session_choices == {} and win.hidden_recipes == set(),
+          'another recipe in the box starts with no session choices')
+
+    # Back to the state the following tests expect.
+    win.category_combo.setCurrentIndex(win.category_combo.findText('medicine'))
+    app.processEvents()
+    index = win.recipe_combo.findText('Гамма-препарат')
+    check(index >= 0, 'the overlay recipe is still present in medicine')
+    win.recipe_combo.setCurrentIndex(index)
+    win.amount_entry.setText('90')
+    win.calculate_reactants()
 
 
 def test_overlay(app, win):
@@ -514,18 +794,19 @@ def test_overlay(app, win):
           'the overlay content is a link-aware text browser')
     check('reagent:Diphenhydramine' in overlay.content.toHtml(),
           'the overlay carries the recipe links')
-    sweeper = start_popup_sweeper(app, 'DiphenhydramineFromEthanol')
+    check('text-decoration: underline' not in overlay.content.toHtml(),
+          'the overlay does not underline its links')
+    sweeper = start_popup_sweeper(app, 'Альтернативный рецепт: DiphenhydramineFromEthanol')
     overlay.content.anchorClicked.emit(QtCore.QUrl('reagent:Diphenhydramine'))
     app.processEvents()
     stop_sweeper(sweeper)
-    check(win.reagent_recipe_overrides
-          == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
+    check(win.session_choices == {'Diphenhydramine': 'DiphenhydramineFromEthanol'},
           'a click in the overlay picks the alternative recipe')
     check('720' in overlay.content.toPlainText(),
           'the overlay shows the newly chosen recipe')
     # Убрать выбор, чтобы остальные тесты видели состояние по умолчанию.
     win.choose_reagent_recipe('Diphenhydramine', 'Diphenhydramine')
-    check(win.reagent_recipe_overrides == {}, 'the overlay override is cleared again')
+    check(win.session_choices == {}, 'the overlay choice is cleared again')
     # the window background carries the alpha on every platform
     check(background_alpha(overlay) == round(win.overlay_opacity * 255),
           'the overlay paints its background')
@@ -887,10 +1168,10 @@ def test_settings(app, win):
         saved = json.load(handle)
     check(set(saved) == {'config_version', 'opacity', 'language', 'depth_colors',
                          'custom_recipes', 'custom_translations',
-                         'recipe_file_categories', 'reagent_recipe_overrides',
-                         'presets'},
-          'settings.cfg keeps the Tk format plus the version, the labels, the overrides and the presets')
-    check(saved['reagent_recipe_overrides'] == {}, 'no reagent override is written by default')
+                         'recipe_file_categories', 'presets'},
+          'settings.cfg keeps the Tk format plus the version, the labels and the presets')
+    check('reagent_recipe_overrides' not in saved,
+          'recipe replacements are never written')
     check(saved['config_version'] == 1, 'the config carries its format version')
     check(saved['depth_colors'] == win.depth_colors, 'colours are written to disk')
 
@@ -1215,7 +1496,8 @@ def run_suite():
     app.processEvents()
 
     steps = (test_startup, test_data_py, test_search, test_popup_styles,
-             test_calculation, test_reagent_recipe_choice, test_overlay,
+             test_calculation, test_reagent_recipe_choice, test_hidden_recipes,
+             test_byproducts, test_overlay,
              test_settings, test_update_flow, test_presets, test_reset, test_close)
     for step in steps:
         try:

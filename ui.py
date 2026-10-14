@@ -254,6 +254,7 @@ def init_ui(self):
 
     left_v.addWidget(QtWidgets.QLabel('Рецепт'))
     self.recipe_combo = QtWidgets.QComboBox()
+    self.recipe_combo.currentIndexChanged.connect(self.on_recipe_combo_changed)
     left_v.addWidget(self.recipe_combo)
 
     left_v.addWidget(QtWidgets.QLabel('Количество'))
@@ -655,7 +656,9 @@ def update_overlay_content(self):
     """Mirror the latest calculation result into the overlay."""
     if self.overlay_content is None:
         return
-    self.overlay_content.setHtml(self.result_text.toHtml())
+    # Verbatim instead of result_text.toHtml(): such a round-trip drops
+    # text-decoration: none, and Qt would underline every anchor again.
+    self.overlay_content.setHtml(self.result_html)
 
 
 def create_settings_window(self):
