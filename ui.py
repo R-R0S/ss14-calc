@@ -22,6 +22,7 @@ HANDLE_PREFIX = 'overlay_handle_'
 APP_STYLE_SHEET = """
 QMainWindow, QDialog { background-color: #2e2e2e; }
 QLabel { color: #ffffff; background: transparent; }
+QLabel#footer_caption { font-weight: bold; }
 QLineEdit, QComboBox {
     background-color: #4f4f4f;
     color: #ffffff;
@@ -232,7 +233,7 @@ def init_ui(self):
 
     self.setWindowTitle(f'{APP_TITLE} v{self.current_version}')
     self.setWindowIcon(QtGui.QIcon(icon_path()))
-    self.resize(900, 620)
+    self.resize(900, 600)
 
     central = QtWidgets.QWidget(self)
     self.setCentralWidget(central)
@@ -378,6 +379,7 @@ def _init_footer(self, layout):
         row.addWidget(button)
 
     caption = QtWidgets.QLabel('© FelinidsPower,\n «Надежда» - 3026г.')
+    caption.setObjectName('footer_caption')
     row.addWidget(caption)
     row.addStretch()
     layout.addLayout(row)
@@ -849,10 +851,10 @@ def _fit_links_columns(self):
 def reload_links_table(self):
     """Fill the links table with the sources and the downloaded files.
 
-    Sources keep their configured order; downloaded files that no longer
-    belong to a source are listed after them with an empty link.  Every
-    cell is read-only: the category and the link change only through the
-    dialog and the file name is automatic.
+    Sources keep their configured order; local files the user put into the
+    folder themselves are listed after them with the «Локальный» link.
+    Every cell is read-only: the category and the link change only through
+    the dialog and the file name is automatic.
     """
     sources, _live_sources, folder, suffix = _current_links(self)
     downloaded = logic.local_files(folder, suffix)
@@ -872,7 +874,7 @@ def reload_links_table(self):
         file_item = QtWidgets.QTableWidgetItem(f'{name}{suffix}{note}')
         file_item.setFlags(file_item.flags() & ~QtCore.Qt.ItemIsEditable)
 
-        url_item = QtWidgets.QTableWidgetItem(sources.get(name, ''))
+        url_item = QtWidgets.QTableWidgetItem(sources.get(name, 'Локальный'))
         url_item.setData(QtCore.Qt.UserRole, name)
         url_item.setFlags(url_item.flags() & ~QtCore.Qt.ItemIsEditable)
 
@@ -894,8 +896,14 @@ def _current_links(self):
 
 
 def edit_link(self, is_edit=False):
-    """Add a source or change the one selected in the table."""
+    """Add a source or change the one selected in the table.
+
+    A file the user put into the folder themselves carries no source: its
+    link reads «Локальный» and cannot be edited, so saving changes only the
+    category.  Without a source the file is never downloaded.
+    """
     is_recipes = self.links_mode == 'Рецепты'
+    saved_links, live_sources, folder, suffix = _current_links(self)
     stem, label, url = '', '', ''
     if is_edit:
         selected = self.links_table.selectedItems()
@@ -906,6 +914,7 @@ def edit_link(self, is_edit=False):
         stem = self.links_table.item(row, 0).data(QtCore.Qt.UserRole)
         label = self.links_table.item(row, 0).text() if is_recipes else stem
         url = self.links_table.item(row, 1 if is_recipes else 0).text()
+    is_local = is_edit and stem not in saved_links
 
     dialog = QtWidgets.QDialog(self)
     dialog.setWindowTitle('Редактирование ссылки' if is_edit else 'Добавление ссылки')
@@ -917,13 +926,14 @@ def edit_link(self, is_edit=False):
         label_edit = QtWidgets.QLineEdit(label)
         layout.addWidget(label_edit)
     layout.addWidget(QtWidgets.QLabel('Ссылка:'))
-    url_edit = QtWidgets.QLineEdit(url)
+    url_edit = QtWidgets.QLineEdit('Локальный' if is_local else url)
+    url_edit.setReadOnly(is_local)
     layout.addWidget(url_edit)
 
     def save():
         nonlocal stem
         new_url = url_edit.text().strip()
-        if not new_url.startswith(('http://', 'https://')):
+        if not is_local and not new_url.startswith(('http://', 'https://')):
             QtWidgets.QMessageBox.critical(dialog, 'Ошибка', 'Ссылка должна начинаться с http:// или https://')
             return
 
@@ -938,7 +948,6 @@ def edit_link(self, is_edit=False):
                     'Категория не может содержать символы, запрещённые в именах файлов')
                 return
 
-        saved_links, live_sources, folder, suffix = _current_links(self)
         if not is_edit:
             base = logic.file_stem_from_url(new_url)
             if not base:
@@ -948,8 +957,9 @@ def edit_link(self, is_edit=False):
             taken = set(saved_links) | logic.local_files(folder, suffix)
             stem = logic.fresh_file_stem(base, taken)
 
-        saved_links[stem] = new_url
-        live_sources[stem] = new_url
+        if not is_local:
+            saved_links[stem] = new_url
+            live_sources[stem] = new_url
         if is_recipes:
             if new_label == stem:
                 self.recipe_file_categories.pop(stem, None)
